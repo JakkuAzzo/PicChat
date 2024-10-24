@@ -110,7 +110,7 @@
                     return;
                 }
                 $.ajax({
-                    url: "{{ url_for('send_message', contact=contact) }}",
+                    url: "{{ url_for('start_conversation', contact=contact) }}",
                     type: "POST",
                     data: $(this).serialize(),
                     success: function(response) {
