@@ -1,26 +1,29 @@
-<!-- templates/chat_with.html -->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Chat with {{ contact }}</title>
+    <title>{% if contact %}Chat with {{ contact }}{% else %}Conversations{% endif %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
     <div class="app-container">
-       <!-- Left Sidebar Content -->
+        <!-- Left Sidebar Content -->
         <div class="header">
             <button class="collapse-button" onclick="toggleSidebar('left')">&#9776;</button>
             <h3>Conversations</h3>
         </div>
         <ul class="conversations-list">
-            {% for convo in conversations %}
-                <li>
-                    <a href="{{ url_for('chat_with', contact=convo['contact']) }}">{{ convo['contact'] }}</a>
-                    <span class="last-message-time">{{ convo['last_message_time'] }}</span>
-                </li>
-            {% endfor %}
+            {% if conversations %}
+                {% for convo in conversations %}
+                    <li>
+                        <a href="{{ url_for('chat_with', contact=convo['contact']) }}">{{ convo['contact'] }}</a>
+                        <span class="last-message-time">{{ convo['last_message_time'] }}</span>
+                    </li>
+                {% endfor %}
+            {% else %}
+                <p>You have no conversations, use the option above to search for a contact and send them a message.</p>
+            {% endif %}
         </ul>
         <form action="{{ url_for('start_conversation') }}" method="post">
             <input type="text" name="contact" placeholder="Start new conversation" required>
@@ -29,34 +32,45 @@
 
         <!-- Main Chat Area -->
         <div class="main-chat">
-            <div class="chat-header">
-                <button class="menu-button" onclick="toggleSidebar('left')">&#9776;</button>
-                <h2>Chat with {{ contact }}</h2>
-                <button class="menu-button" onclick="toggleSidebar('right')">&#9776;</button>
-            </div>
-            <div class="chat-messages" style="background-image: url('{{ url_for('images', filename=background_image) }}');">
-                {% for message in messages %}
-                    {% if message['sender_id'] == session['user_id'] %}
-                        <div class="chat-message you">
-                            <p>{{ message['message_text'] }}</p>
-                            <div class="message-info">You {{ session['username'] }} - {{ message['timestamp'] }}</div>
-                        </div>
+            {% if contact %}
+                <div class="chat-header">
+                    <button class="menu-button" onclick="toggleSidebar('left')">&#9776;</button>
+                    <h2>Chat with {{ contact }}</h2>
+                    <button class="menu-button" onclick="toggleSidebar('right')">&#9776;</button>
+                </div>
+                <div class="chat-messages" id="chat-messages" style="background-image: url('{{ url_for('images', filename=background_image) }}');">
+                    {% if messages %}
+                        {% for message in messages %}
+                            {% if message['sender_id'] == session['user_id'] %}
+                                <div class="chat-message you">
+                                    <p>{{ message['message_text'] }}</p>
+                                    <div class="message-info">You {{ session['username'] }} - {{ message['timestamp'] }}</div>
+                                </div>
+                            {% else %}
+                                <div class="chat-message other">
+                                    <p>{{ message['message_text'] }}</p>
+                                    <div class="message-info">{{ contact }} - {{ message['timestamp'] }}</div>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
                     {% else %}
-                        <div class="chat-message other">
-                            <p>{{ message['message_text'] }}</p>
-                            <div class="message-info">{{ contact }} - {{ message['timestamp'] }}</div>
-                        </div>
+                        <p>No messages found. Start the conversation by sending a message.</p>
                     {% endif %}
-                {% endfor %}
-            </div>
-            <div class="chat-input">
-                <form action="" method="post">
-                    <input type="text" name="message" placeholder="Type your message..." required>
-                    <button type="submit">&#9658;</button>
-                </form>
-                <a href="{{ url_for('exit_chat', contact=contact) }}">Exit Chat</a>
-            </div>
+                </div>
+                <div class="chat-input">
+                    <form id="message-form" action="" method="post">
+                        <input type="text" name="message" placeholder="Type your message..." required>
+                        <button type="submit">&#9658;</button>
+                    </form>
+                    <a href="{{ url_for('exit_chat', contact=contact) }}">Exit Chat</a>
+                </div>
+            {% else %}
+                <div class="no-chat">
+                    <p>Select a conversation from the left or start a new one.</p>
+                </div>
+            {% endif %}
         </div>
+
         <!-- Right Sidebar Content -->
         <div class="header">
             <h3>Menu</h3>
@@ -81,6 +95,46 @@
                 rightSidebar.classList.toggle('collapsed');
             }
         }
+
+        $(document).ready(function() {
+            // Function to check if contact has a value
+            function checkContact() {
+                return contact && contact.trim() !== '';
+            }
+
+            // Event listener for form submission
+            $('#message-form').on('submit', function(event) {
+                event.preventDefault();
+                if (!checkContact()) {
+                    $('#error-message').text('No contact selected. Please select a contact to start a conversation.').show();
+                    return;
+                }
+                $.ajax({
+                    url: "{{ url_for('send_message', contact=contact) }}",
+                    type: "POST",
+                    data: $(this).serialize(),
+                    success: function(response) {
+                        if (response.error) {
+                            $('#error-message').text(response.error).show();
+                        } else {
+                            $('#chat-messages').html(response.messages_html);
+                            $('#message-form')[0].reset();
+                            $('#error-message').hide();
+
+                            // Check contact value after successful message send
+                            if (!checkContact()) {
+                                $('#error-message').text('No contact selected. Please select a contact to start a conversation.').show();
+                            }
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error(error);
+                        $('#error-message').text('An error occurred while sending the message.').show();
+                    }
+                });
+            });
+        });
     </script>
+    <div id="error-message" style="display:none; color:red;"></div>
 </body>
 </html>

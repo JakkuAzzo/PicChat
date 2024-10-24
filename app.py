@@ -121,8 +121,10 @@ def chat():
         return redirect(url_for('login'))
     conn = get_db_connection()
     conversations = conn.execute('SELECT * FROM conversations WHERE user_id = ?', (session['user_id'],)).fetchall()
+    image_list = [f for f in os.listdir(IMAGES_FOLDER) if os.path.isfile(os.path.join(IMAGES_FOLDER, f))]
+    background_image = random.choice(image_list) if image_list else None
     conn.close()
-    return render_template('app_view.html', conversations=conversations)
+    return render_template('chat_with.html', conversations=conversations, contact=None, messages=None, background_image=background_image)
 
 @app.route('/start_conversation', methods=['POST'])
 def start_conversation():
@@ -140,19 +142,17 @@ def start_conversation():
 def chat_with(contact):
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    
     conn = get_db_connection()
-    # Fetch conversation
     conversation = conn.execute('''
         SELECT * FROM conversations
         WHERE user_id = ? AND contact = ?
     ''', (session['user_id'], contact)).fetchone()
-    # Fetch messages
-    messages = conn.execute('''
-        SELECT * FROM messages
-        WHERE conversation_id = ?
-        ORDER BY timestamp ASC
-    ''', (conversation['id'],)).fetchall()
-    # Handle message sending
+    
+    if not conversation:
+        conn.close()
+        return redirect(url_for('chat'))
+    
     if request.method == 'POST':
         message_text = request.form['message']
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -161,6 +161,7 @@ def chat_with(contact):
             VALUES (?, ?, ?, ?)
         ''', (conversation['id'], session['user_id'], message_text, timestamp))
         conn.commit()
+        
         # Update last_message_time in conversations table
         conn.execute('''
             UPDATE conversations
@@ -168,13 +169,71 @@ def chat_with(contact):
             WHERE id = ?
         ''', (timestamp, conversation['id']))
         conn.commit()
+        
         # Redirect to avoid form resubmission
         return redirect(url_for('chat_with', contact=contact))
+    
+    messages = conn.execute('''
+        SELECT * FROM messages
+        WHERE conversation_id = ?
+        ORDER BY timestamp ASC
+    ''', (conversation['id'],)).fetchall()
+    
     # Select a random background image
     image_list = [f for f in os.listdir(IMAGES_FOLDER) if os.path.isfile(os.path.join(IMAGES_FOLDER, f))]
     background_image = random.choice(image_list) if image_list else None
+    
     conn.close()
+    
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        messages_html = render_template('messages.html', messages=messages, contact=contact)
+        return {'messages_html': messages_html}
+    
     return render_template('chat_with.html', contact=contact, messages=messages, background_image=background_image)
+
+@app.route('/send_message/<contact>', methods=['POST'])
+def send_message(contact):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    conversation = conn.execute('''
+        SELECT * FROM conversations
+        WHERE user_id = ? AND contact = ?
+    ''', (session['user_id'], contact)).fetchone()
+    
+    if conversation:
+        message_text = request.form['message']
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute('''
+            INSERT INTO messages (conversation_id, sender_id, message_text, timestamp)
+            VALUES (?, ?, ?, ?)
+        ''', (conversation['id'], session['user_id'], message_text, timestamp))
+        conn.commit()
+        
+        # Update last_message_time in conversations table
+        conn.execute('''
+            UPDATE conversations
+            SET last_message_time = ?
+            WHERE id = ?
+        ''', (timestamp, conversation['id']))
+        conn.commit()
+        
+        # Fetch updated messages
+        messages = conn.execute('''
+            SELECT * FROM messages
+            WHERE conversation_id = ?
+            ORDER BY timestamp ASC
+        ''', (conversation['id'],)).fetchall()
+        
+        # Render messages to HTML
+        messages_html = render_template('messages.html', messages=messages, contact=contact)
+        
+        conn.close()
+        return {'messages_html': messages_html}
+    
+    conn.close()
+    return {'error': 'Conversation not found'}, 404
 
 @app.route('/exit_chat/<contact>', methods=['GET', 'POST'])
 def exit_chat(contact):
@@ -237,7 +296,6 @@ def embed_in_image(encrypted_text):
     # Open the image and embed the encrypted text
     with Image.open(input_image_path) as img:
         img.save(output_image_path, 'PNG')
-    # For demonstration purposes, we're not actually embedding data into the image.
     # Implement steganography embedding as needed.
     return output_image_name
 
@@ -250,8 +308,20 @@ def decrypt_messages(encrypted_text, key):
 def images(filename):
     return send_from_directory(IMAGES_FOLDER, filename)
 
-@app.route('about')
-def 
+@app.route('/about')
+def about():
+    return render_template('about.html')
+
+if __name__ == '__main__':
+    app.run(debug=True, port = 5000)
+
+@app.route('/images/<path:filename>')
+def images(filename):
+    return send_from_directory(IMAGES_FOLDER, filename)
+
+@app.route('/about')
+def about():
+    return render_template('about.html')
 
 if __name__ == '__main__':
     app.run(debug=True, port = 5000)

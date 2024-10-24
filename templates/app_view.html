@@ -27,7 +27,6 @@
                 <button type="submit">Start</button>
             </form>
         </div>
-    </div> 
 
         <!-- Main chat window -->
         <div class="main-chat">
@@ -37,18 +36,19 @@
                 <p>Select a conversation to start chatting.</p>
                 <button class="menu-button" onclick="toggleSidebar('right')">&#9776;</button>
         </div>
+
         <!-- Right collapsible hamburger menu -->
         <div class="sidebar-right" id="sidebar-right">
             <div class="header">
                 <h3>Menu</h3>
                 <button class="collapse-button" onclick="toggleSidebar('right')">&#9776;</button>
-            <ul>
-                
-                <li><a href="{{ url_for('logout') }}">Logout</a></li>
-            </ul>
+                <ul>
+                    <li><a href="{{ url_for('about') }}">About</a></li>
+                    <li><a href="{{ url_for('logout') }}">Logout</a></li>
+                </ul>
             </div>
         </div>
-    </div>
+
     <script>
         function toggleSidebar(side) {
             const leftSidebar = document.getElementById('sidebar-left');

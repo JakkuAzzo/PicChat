@@ -1,0 +1,13 @@
+{% for message in messages %}
+    {% if message['sender_id'] == session['user_id'] %}
+        <div class="chat-message you">
+            <p>{{ message['message_text'] }}</p>
+            <div class="message-info">You {{ session['username'] }} - {{ message['timestamp'] }}</div>
+        </div>
+    {% else %}
+        <div class="chat-message other">
+            <p>{{ message['message_text'] }}</p>
+            <div class="message-info">{{ contact }} - {{ message['timestamp'] }}</div>
+        </div>
+    {% endif %}
+{% endfor %}
