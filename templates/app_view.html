@@ -1,0 +1,64 @@
+<!-- templates/app_view.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PicChat - Chat</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Left collapsible panel for conversations -->
+        <div class="sidebar-left" id="sidebar-left">
+            <div class="header">
+                <button class="collapse-button" onclick="toggleSidebar('left')">&#9776;</button>
+                <h3>Conversations</h3>
+            <ul>
+                {% for convo in conversations %}
+                    <li>
+                        <a href="{{ url_for('chat_with', contact=convo['contact']) }}">{{ convo['contact'] }}</a>
+                        <span>{{ convo['last_message_time'] }}</span>
+                    </li>
+                {% endfor %}
+            </ul>
+            <form action="{{ url_for('start_conversation') }}" method="post">
+                <input type="text" name="contact" placeholder="Start new conversation" required>
+                <button type="submit">Start</button>
+            </form>
+        </div>
+    </div> 
+
+        <!-- Main chat window -->
+        <div class="main-chat">
+            <div class="chat-header">
+                <button class="menu-button" onclick="toggleSidebar('left')">&#9776;</button>
+                <h2>Welcome, {{ session['username'] }}</h2>
+                <p>Select a conversation to start chatting.</p>
+                <button class="menu-button" onclick="toggleSidebar('right')">&#9776;</button>
+        </div>
+        <!-- Right collapsible hamburger menu -->
+        <div class="sidebar-right" id="sidebar-right">
+            <div class="header">
+                <h3>Menu</h3>
+                <button class="collapse-button" onclick="toggleSidebar('right')">&#9776;</button>
+            <ul>
+                
+                <li><a href="{{ url_for('logout') }}">Logout</a></li>
+            </ul>
+            </div>
+        </div>
+    </div>
+    <script>
+        function toggleSidebar(side) {
+            const leftSidebar = document.getElementById('sidebar-left');
+            const rightSidebar = document.getElementById('sidebar-right');
+            if (side === 'left') {
+                leftSidebar.classList.toggle('collapsed');
+            } else if (side === 'right') {
+                rightSidebar.classList.toggle('collapsed');
+            }
+        }
+    </script>
+</body>
+</html>

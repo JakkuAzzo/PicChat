@@ -1,0 +1,86 @@
+<!-- templates/chat_with.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat with {{ contact }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="app-container">
+       <!-- Left Sidebar Content -->
+        <div class="header">
+            <button class="collapse-button" onclick="toggleSidebar('left')">&#9776;</button>
+            <h3>Conversations</h3>
+        </div>
+        <ul class="conversations-list">
+            {% for convo in conversations %}
+                <li>
+                    <a href="{{ url_for('chat_with', contact=convo['contact']) }}">{{ convo['contact'] }}</a>
+                    <span class="last-message-time">{{ convo['last_message_time'] }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+        <form action="{{ url_for('start_conversation') }}" method="post">
+            <input type="text" name="contact" placeholder="Start new conversation" required>
+            <button type="submit">Start</button>
+        </form>
+
+        <!-- Main Chat Area -->
+        <div class="main-chat">
+            <div class="chat-header">
+                <button class="menu-button" onclick="toggleSidebar('left')">&#9776;</button>
+                <h2>Chat with {{ contact }}</h2>
+                <button class="menu-button" onclick="toggleSidebar('right')">&#9776;</button>
+            </div>
+            <div class="chat-messages" style="background-image: url('{{ url_for('images', filename=background_image) }}');">
+                {% for message in messages %}
+                    {% if message['sender_id'] == session['user_id'] %}
+                        <div class="chat-message you">
+                            <p>{{ message['message_text'] }}</p>
+                            <div class="message-info">You {{ session['username'] }} - {{ message['timestamp'] }}</div>
+                        </div>
+                    {% else %}
+                        <div class="chat-message other">
+                            <p>{{ message['message_text'] }}</p>
+                            <div class="message-info">{{ contact }} - {{ message['timestamp'] }}</div>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            <div class="chat-input">
+                <form action="" method="post">
+                    <input type="text" name="message" placeholder="Type your message..." required>
+                    <button type="submit">&#9658;</button>
+                </form>
+                <a href="{{ url_for('exit_chat', contact=contact) }}">Exit Chat</a>
+            </div>
+        </div>
+        <!-- Right Sidebar Content -->
+        <div class="header">
+            <h3>Menu</h3>
+            <button class="collapse-button" onclick="toggleSidebar('right')">&#10006;</button>
+        </div>
+        <div class="hamburger-menu">
+            <ul>
+                <li><a href="{{ url_for('about') }}">About</a></li>
+                <li><a href="{{ url_for('logout') }}">Logout</a></li>
+                <!-- Additional menu items -->
+            </ul>
+        </div>
+    </div>
+    <!-- Include the script -->
+    <script>
+        function toggleSidebar(side) {
+            const leftSidebar = document.getElementById('sidebar-left');
+            const rightSidebar = document.getElementById('sidebar-right');
+            if (side === 'left') {
+                leftSidebar.classList.toggle('collapsed');
+            } else if (side === 'right') {
+                rightSidebar.classList.toggle('collapsed');
+            }
+        }
+    </script>
+</body>
+</html>
