@@ -7,6 +7,16 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
+    <!-- Navigation Bar -->
+    <nav>
+        <ul>
+            <li><a href="{{ url_for('home') }}">Home</a></li>
+            <li><a href="{{ url_for('chat') }}">Chat</a></li>
+            <li><a href="{{ url_for('about') }}">About</a></li>
+            <li><a href="{{ url_for('logout') }}">Logout</a></li>
+        </ul>
+    </nav>
+
     <div class="app-container">
         <!-- Left Sidebar Content -->
         <div class="header">
@@ -36,7 +46,6 @@
                 <div class="chat-header">
                     <button class="menu-button" onclick="toggleSidebar('left')">&#9776;</button>
                     <h2>Chat with {{ contact }}</h2>
-                    <button class="menu-button" onclick="toggleSidebar('right')">&#9776;</button>
                 </div>
                 <div class="chat-messages" id="chat-messages" style="background-image: url('{{ url_for('images', filename=background_image) }}');">
                     {% if messages %}
@@ -62,7 +71,11 @@
                         <input type="text" name="message" placeholder="Type your message..." required>
                         <button type="submit">&#9658;</button>
                     </form>
-                    <a href="{{ url_for('exit_chat', contact=contact) }}">Exit Chat</a>
+                    {% if contact %}
+                        <a href="{{ url_for('exit_chat', contact=contact) }}">Exit Chat</a>
+                    {% else %}
+                        <button disabled>Exit Chat</button>
+                    {% endif %}
                 </div>
             {% else %}
                 <div class="no-chat">
@@ -70,29 +83,13 @@
                 </div>
             {% endif %}
         </div>
-
-        <!-- Right Sidebar Content -->
-        <div class="header">
-            <h3>Menu</h3>
-            <button class="collapse-button" onclick="toggleSidebar('right')">&#10006;</button>
-        </div>
-        <div class="hamburger-menu">
-            <ul>
-                <li><a href="{{ url_for('about') }}">About</a></li>
-                <li><a href="{{ url_for('logout') }}">Logout</a></li>
-                <!-- Additional menu items -->
-            </ul>
-        </div>
     </div>
     <!-- Include the script -->
     <script>
         function toggleSidebar(side) {
             const leftSidebar = document.getElementById('sidebar-left');
-            const rightSidebar = document.getElementById('sidebar-right');
             if (side === 'left') {
                 leftSidebar.classList.toggle('collapsed');
-            } else if (side === 'right') {
-                rightSidebar.classList.toggle('collapsed');
             }
         }
 
@@ -110,7 +107,7 @@
                     return;
                 }
                 $.ajax({
-                    url: "{{ url_for('start_conversation', contact=contact) }}",
+                    url: "{{ url_for('chat_with', contact=contact) }}",
                     type: "POST",
                     data: $(this).serialize(),
                     success: function(response) {
