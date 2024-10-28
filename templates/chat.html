@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block title %}PicChat - Chat{% endblock %}
+{% block content %}
+<div class="app-container">
+    <!-- Left Sidebar -->
+    <div class="sidebar-left" id="sidebar-left">
+        <div class="header">
+            <button class="collapse-button" onclick="toggleSidebar('left')">&#9776;</button>
+            <h3>Conversations</h3>
+            <button class="plus-button" onclick="toggleSearch()">+</button>
+            <div id="search-container" style="display: none;">
+                <input type="text" id="search-input" placeholder="Search for users..." oninput="searchUsers()">
+                <ul id="search-results"></ul>
+            </div>
+        </div>
+        <ul class="conversations-list">
+            {% if conversations %}
+                {% for convo in conversations %}
+                    <li>
+                        <a href="{{ url_for('chat_with', contact=convo['contact']) }}">{{ convo['contact'] }}</a>
+                        <span class="last-message-time">{{ convo['last_message_time'] }}</span>
+                    </li>
+                {% endfor %}
+            {% else %}
+                <p>You have no conversations. Use the option below to start a new conversation.</p>
+            {% endif %}
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleSidebar(side) {
+        const leftSidebar = document.getElementById('sidebar-left');
+        if (side === 'left') {
+            leftSidebar.classList.toggle('collapsed');
+        }
+    }
+
+    function toggleSearch() {
+        const searchContainer = document.getElementById('search-container');
+        searchContainer.style.display = searchContainer.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function searchUsers() {
+        const query = document.getElementById('search-input').value;
+        if (query.length < 2) {
+            document.getElementById('search-results').innerHTML = '';
+            return;
+        }
+        fetch(`/search_users?q=${query}`)
+            .then(response => response.json())
+            .then(data => {
+                const resultsContainer = document.getElementById('search-results');
+                resultsContainer.innerHTML = '';
+                data.users.forEach(user => {
+                    const li = document.createElement('li');
+                    li.textContent = user.username;
+                    li.onclick = () => startConversation(user.username);
+                    resultsContainer.appendChild(li);
+                });
+            });
+    }
+
+    function startConversation(username) {
+        fetch(`/start_conversation`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({ contact: username })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = `/chat_with/${username}`;
+            } else {
+                alert(data.message);
+            }
+        });
+    }
+</script>
+{% endblock %}

@@ -1,39 +1,11 @@
 /* static/styles.css */
 
-nav {
-    background-color: #333;
-    overflow: hidden;
-}
-
-nav ul {
-    list-style-type: none;
-    margin: 0;
-    padding: 0;
-}
-
-nav ul li {
-    float: left;
-}
-
-nav ul li a {
-    display: block;
-    color: white;
-    text-align: center;
-    padding: 14px 16px;
-    text-decoration: none;
-}
-
-nav ul li a:hover {
-    background-color: #111;
-}
-
 /* General Styles */
 body {
     margin: 0;
     padding: 0;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: #f0f0f0;
-    overflow: hidden;
 }
 
 a {
@@ -50,6 +22,34 @@ button {
     cursor: pointer;
 }
 
+/* Navigation Bar */
+nav {
+    background-color: #075E54;
+    color: #fff;
+    padding: 10px;
+}
+
+nav ul {
+    list-style-type: none;
+    display: flex;
+    justify-content: flex-start;
+    margin: 0;
+    padding: 0;
+}
+
+nav ul li {
+    margin-right: 20px;
+}
+
+nav ul li a {
+    color: #fff;
+    text-decoration: none;
+}
+
+nav ul li a:hover {
+    text-decoration: underline;
+}
+
 /* Container for the entire app */
 .app-container {
     display: flex;
@@ -62,7 +62,7 @@ button {
     background-color: #ffffff;
     border-right: 1px solid #ddd;
     transition: transform 0.3s ease;
-    overflow: hidden;
+    overflow-y: auto;
 }
 
 .sidebar-left.collapsed {
@@ -153,6 +153,8 @@ button {
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Message Bubbles */
@@ -204,12 +206,7 @@ button {
     border-bottom: 10px solid transparent;
 }
 
-/* Adjustments for the chat area */
-.chat-messages {
-    display: flex;
-    flex-direction: column;
-}
-
+/* Chat Input */
 .main-chat .chat-input {
     padding: 10px;
     background-color: #f0f0f0;
@@ -232,6 +229,17 @@ button {
     margin-left: 10px;
     border-radius: 50%;
     font-size: 20px;
+    cursor: pointer;
+}
+
+/* No Chat Message */
+.no-chat {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 18px;
+    color: #888;
 }
 
 /* Right Sidebar - Hamburger Menu */
@@ -240,7 +248,7 @@ button {
     background-color: #ffffff;
     border-left: 1px solid #ddd;
     transition: transform 0.3s ease;
-    overflow: hidden;
+    overflow-y: auto;
 }
 
 .sidebar-right.collapsed {
@@ -360,6 +368,7 @@ button {
     color: #fff;
     border-radius: 5px;
     font-size: 16px;
+    cursor: pointer;
 }
 
 /* Animation */

@@ -1,18 +1,15 @@
 <!-- templates/encrypt.html -->
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Exit Chat with {{ contact }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-</head>
-<body>
-    <h2>Encrypt and Save Conversation</h2>
-    <form action="" method="post">
-        <label for="password">Create a password to encrypt your messages:</label><br>
-        <input type="password" name="password" required><br>
-        <button type="submit">Encrypt and Exit</button>
-    </form>
-</body>
-</html>
+{% extends 'base.html' %}
+
+{% block title %}Exit Chat with {{ contact }}{% endblock %}
+
+{% block content %}
+<h2>Save Conversation with {{ contact }}</h2>
+<p>Your conversation will be saved into an image file.</p>
+<form action="" method="post">
+    {{ csrf_token() }}
+    <button type="submit">Save and Exit</button>
+</form>
+{% endblock %}
+
