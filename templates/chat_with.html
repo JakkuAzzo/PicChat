@@ -11,7 +11,7 @@
     <nav>
         <ul>
             <li><a href="{{ url_for('home') }}">Home</a></li>
-            <li><a href="{{ url_for('chat') }}">Chat</a></li>
+            <li><a href="{{ url_for('chat_with') }}">Chat</a></li>
             <li><a href="{{ url_for('about') }}">About</a></li>
             <li><a href="{{ url_for('logout') }}">Logout</a></li>
         </ul>
@@ -42,7 +42,11 @@
 
         <!-- Main Chat Area -->
         <div class="main-chat">
-            {% if contact %}
+            {% if no_user_selected %}
+                <div class="no-chat">
+                    <p>Start or open a conversation to chat.</p>
+                </div>
+            {% else %}
                 <div class="chat-header">
                     <button class="menu-button" onclick="toggleSidebar('left')">&#9776;</button>
                     <h2>Chat with {{ contact }}</h2>
@@ -71,15 +75,7 @@
                         <input type="text" name="message" placeholder="Type your message..." required>
                         <button type="submit">&#9658;</button>
                     </form>
-                    {% if contact %}
-                        <a href="{{ url_for('exit_chat', contact=contact) }}">Exit Chat</a>
-                    {% else %}
-                        <button disabled>Exit Chat</button>
-                    {% endif %}
-                </div>
-            {% else %}
-                <div class="no-chat">
-                    <p>Select a conversation from the left or start a new one.</p>
+                    <a href="{{ url_for('exit_chat', contact=contact) }}">Exit Chat</a>
                 </div>
             {% endif %}
         </div>
@@ -96,7 +92,7 @@
         $(document).ready(function() {
             // Function to check if contact has a value
             function checkContact() {
-                return contact && contact.trim() !== '';
+                return "{{ contact }}" && "{{ contact }}".trim() !== '';
             }
 
             // Event listener for form submission

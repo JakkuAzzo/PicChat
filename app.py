@@ -93,21 +93,23 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-@app.route('/chat', methods=['GET', 'POST'])
+app.route('/chat', methods=['GET', 'POST'])
 def chat():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    if not contact:
-        return {'error': 'No contact selected'}, 400
+    contact = request.args.get('contact', 'EmptyNoUserSelected')
     
     conn = get_db_connection()
     conversations = conn.execute('SELECT * FROM conversations WHERE user_id = ?', (session['user_id'],)).fetchall()
     image_list = [f for f in os.listdir(IMAGES_FOLDER) if os.path.isfile(os.path.join(IMAGES_FOLDER, f))]
     background_image = random.choice(image_list) if image_list else None
     conn.close()
-    return render_template('chat_with.html', conversations=conversations, contact=None, messages=None, background_image=background_image)
-
+    
+    if contact == 'EmptyNoUserSelected':
+        return render_template('chat_with.html', conversations=conversations, contact=None, messages=None, background_image=background_image, no_user_selected=True)
+    
+    return render_template('chat_with.html', conversations=conversations, contact=contact, messages=None, background_image=background_image, no_user_selected=False)
 @app.route('/start_conversation', methods=['POST'])
 @login_required
 def start_conversation():
