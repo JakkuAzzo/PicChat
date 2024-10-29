@@ -20,13 +20,13 @@
           {% endif %}
         {% endwith %}
         <div class="form-container">
-            <form action="{{ url_for('login') }}" method="post">
+            <form id="login-form" action="{{ url_for('login') }}" method="post">
                 <h3>Login</h3>
                 <input type="text" name="username" placeholder="Username" required><br>
                 <input type="password" name="password" placeholder="Password" required><br>
                 <button type="submit">Login</button>
             </form>
-            <form action="{{ url_for('signup') }}" method="post">
+            <form id="signup-form" action="{{ url_for('signup') }}" method="post">
                 <h3>Sign Up</h3>
                 <input type="text" name="username" placeholder="Username" required><br>
                 <input type="password" name="password" placeholder="Password" required><br>
@@ -35,4 +35,53 @@
         </div>
     </div>
 </body>
+<script>
+$(document).ready(function() {
+    $('#login-form').on('submit', function(event) {
+        event.preventDefault();
+        let csrftoken = '{{ csrf_token() }}';
+        $.ajax({
+            url: "{{ url_for('login') }}",
+            type: "POST",
+            data: $(this).serialize(),
+            headers: {
+                'X-CSRFToken': csrftoken
+            },
+            success: function(response) {
+              // Handle success
+              console.log('Login successful:', response);
+              // You can redirect or update the UI here
+            },
+            error: function(xhr, status, error) {
+              // Handle error
+              console.error('Login failed:', error);
+              // You can show an error message to the user here
+            }
+        });
+    });
+});
+
+$(document).ready(function() {
+    $('#signup-form').on('submit', function(event) {
+        event.preventDefault();
+        let csrftoken = '{{ csrf_token() }}';
+        $.ajax({
+            url: "{{ url_for('signup') }}",
+            type: "POST",
+            data: $(this).serialize(),
+            headers: {
+                'X-CSRFToken': csrftoken
+            },
+            success: function(response) {
+                // Handle success
+                console.log('Login successful:', response);
+            },
+            error: function(xhr, status, error) {
+                // Handle error
+                console.error('Login failed:', error);
+            }
+        });
+    });
+});
+</script>
 </html>

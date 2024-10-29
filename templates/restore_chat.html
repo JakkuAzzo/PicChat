@@ -2,13 +2,13 @@
 
 {% extends 'base.html' %}
 
-{% block title %}Restore Chat with {{ contact }}{% endblock %}
+{% block title %}Restore Chat{% endblock %}
 
 {% block content %}
-<h2>Restore Previous Chats with {{ contact }}?</h2>
+<h2>Restore Previous Chat?</h2>
 <form action="" method="post">
-    {{ csrf_token() }}
-    <label for="choice">Do you want to restore previous chats?</label><br>
+    <!-- {{ csrf_token() }} -->
+    <label for="choice">Do you want to restore the previous chat?</label><br>
     <input type="radio" name="choice" value="yes" required> Yes<br>
     <input type="radio" name="choice" value="no" required> No<br><br>
     <button type="submit">Continue</button>

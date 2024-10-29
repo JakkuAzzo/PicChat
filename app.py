@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, send_file
 import sqlite3
 import os
 import datetime
@@ -12,7 +12,10 @@ import random
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 csrf = CSRFProtect(app)
+app.config['WTF_CSRF_TIME_LIMIT'] = None  # Disable CSRF token expiration
+app.config['WTF_CSRF_SSL_STRICT'] = False  # Allow HTTP (not just HTTPS)
 app.config['WTF_CSRF_CHECK_DEFAULT'] = False
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
@@ -52,29 +55,21 @@ def get_db_connection():
 
 def create_schema_file():
     schema_sql = """
-    -- Drop existing tables if they exist
-    DROP TABLE IF EXISTS users;
-    DROP TABLE IF EXISTS conversations;
-    DROP TABLE IF EXISTS messages;
-
-    -- Create users table
-    CREATE TABLE users (
+    CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE,
         password TEXT NOT NULL
     );
-
-    -- Create conversations table
-    CREATE TABLE conversations (
+    CREATE TABLE IF NOT EXISTS conversations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        contact TEXT NOT NULL,
+        user1_id INTEGER NOT NULL,
+        user2_id INTEGER NOT NULL,
         last_message_time TEXT,
-        FOREIGN KEY (user_id) REFERENCES users (id)
+        image_name TEXT,
+        FOREIGN KEY (user1_id) REFERENCES users (id),
+        FOREIGN KEY (user2_id) REFERENCES users (id)
     );
-
-    -- Create messages table
-    CREATE TABLE messages (
+    CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         conversation_id INTEGER NOT NULL,
         sender_id INTEGER NOT NULL,
@@ -88,25 +83,29 @@ def create_schema_file():
         f.write(schema_sql)
 
 def init_db():
-    if not os.path.exists(SCHEMA_FILE):
-        create_schema_file()
-    with app.app_context():
-        db = get_db_connection()
-        with app.open_resource(SCHEMA_FILE, mode='r') as f:
-            db.cursor().executescript(f.read())
-        db.commit()
+    if not os.path.exists(DATABASE):
+        if not os.path.exists(SCHEMA_FILE):
+            create_schema_file()
+        with app.app_context():
+            db = get_db_connection()
+            with app.open_resource(SCHEMA_FILE, mode='r') as f:
+                db.cursor().executescript(f.read())
+            db.commit()
+            db.close()
 
 init_db()
 
 # Routes
 @app.route('/')
 def home():
-    if 'user_id' in session:
+    if current_user.is_authenticated:
         return redirect(url_for('chat'))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('chat'))
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -153,150 +152,199 @@ def logout():
 @app.route('/chat', methods=['GET', 'POST'])
 @login_required
 def chat():
+    conversation_id = request.args.get('conversation_id')
     conn = get_db_connection()
-    conversations = conn.execute('SELECT * FROM conversations WHERE user_id = ?', (current_user.id,)).fetchall()
+    
+    # Fetch conversation list
+    conversations = conn.execute('''
+        SELECT c.*, u.username AS contact_username
+        FROM conversations c
+        JOIN users u ON (u.id = CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END)
+        WHERE c.user1_id = ? OR c.user2_id = ?
+        ORDER BY c.last_message_time DESC
+    ''', (current_user.id, current_user.id, current_user.id)).fetchall()
+    # Fetch messages if a conversation_id is provided
+    messages = None
+    if conversation_id:
+        messages = conn.execute('''
+            SELECT m.*, u.username AS sender_username
+            FROM messages m
+            JOIN users u ON m.sender_id = u.id
+            WHERE m.conversation_id = ?
+            ORDER BY m.timestamp ASC
+        ''', (conversation_id,)).fetchall()
     conn.close()
-    return render_template('chat.html', conversations=conversations)
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return render_template('conversation.html', messages=messages, conversation_id=conversation_id)
+    return render_template('chat.html', conversations=conversations, messages=messages, selected_conversation=conversation_id)
+
+@app.route('/send_message', methods=['POST'])
+@login_required
+def send_message():
+    conversation_id = request.form['conversation_id']
+    message_text = request.form['message_text']
+    conn = get_db_connection()
+    conn.execute('''
+        INSERT INTO messages (conversation_id, sender_id, message_text, timestamp)
+        VALUES (?, ?, ?, ?)
+    ''', (conversation_id, current_user.id, message_text, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    conn.execute('''
+        UPDATE conversations
+        SET last_message_time = ?
+        WHERE id = ?
+    ''', (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), conversation_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('chat', conversation_id=conversation_id))
+
+@app.route('/exit_chat/<int:conversation_id>', methods=['POST'])
+@login_required
+def exit_chat(conversation_id):
+    conn = get_db_connection()
+    conversation = conn.execute('SELECT * FROM conversations WHERE id = ?', (conversation_id,)).fetchone()
+    if conversation:
+        messages = conn.execute('SELECT message_text FROM messages WHERE conversation_id = ?', (conversation_id,)).fetchall()
+        message_texts = [message['message_text'] for message in messages]
+        chat_content = "\n".join(message_texts)
+        image_name = f"chat_{conversation_id}.png"
+        lsb.hide(os.path.join(app.config['UPLOAD_FOLDER'], image_name), chat_content).save(image_name)
+        conn.execute('UPDATE conversations SET image_name = ? WHERE id = ?', (image_name, conversation_id))
+        conn.execute('DELETE FROM messages WHERE conversation_id = ?', (conversation_id,))
+        conn.commit()
+    conn.close()
+    flash("Chat saved and exited.")
+    return redirect(url_for('chat'))
 
 @app.route('/start_conversation', methods=['POST'])
 @login_required
 def start_conversation():
     data = request.get_json()
-    contact = data.get('contact')
+    contact_username = data.get('contact', '')
     conn = get_db_connection()
-    # Check if the contact exists
-    user = conn.execute('SELECT * FROM users WHERE username = ?', (contact,)).fetchone()
-    if not user:
+    contact = conn.execute('SELECT * FROM users WHERE username = ?', (contact_username,)).fetchone()
+    if not contact:
+        flash('User does not exist.')
         conn.close()
-        return jsonify({'success': False, 'message': 'User does not exist.'})
+        return redirect(url_for('chat'))
+    contact_id = contact['id']
+    current_user_id = current_user.id
+    # Ensure consistent ordering
+    user1_id, user2_id = sorted([current_user_id, contact_id])
     # Check if conversation already exists
     conversation = conn.execute('''
-        SELECT * FROM conversations WHERE user_id = ? AND contact = ?
-    ''', (current_user.id, contact)).fetchone()
+        SELECT * FROM conversations WHERE user1_id = ? AND user2_id = ?
+    ''', (user1_id, user2_id)).fetchone()
     if conversation:
         conn.close()
-        return jsonify({'success': True})
+        return redirect(url_for('chat', conversation_id=conversation['id']))
     # Create new conversation
     conn.execute('''
-        INSERT INTO conversations (user_id, contact, last_message_time)
+        INSERT INTO conversations (user1_id, user2_id, last_message_time)
         VALUES (?, ?, ?)
-    ''', (current_user.id, contact, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    ''', (user1_id, user2_id, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    conn.commit()
+    # Retrieve the new conversation ID
+    conversation_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    conn.close()
+    flash('Conversation started.')
+    return redirect(url_for('chat', conversation_id=conversation_id))
+
+@app.route('/download_conversation/<int:conversation_id>', methods=['GET'])
+@login_required
+def download_conversation(conversation_id):
+    conn = get_db_connection()
+    conversation = conn.execute('SELECT * FROM conversations WHERE id = ?', (conversation_id,)).fetchone()
+    if conversation:
+        messages = conn.execute('SELECT message_text FROM messages WHERE conversation_id = ?', (conversation_id,)).fetchall()
+        message_texts = [message['message_text'] for message in messages]
+        chat_content = "\n".join(message_texts)
+        image_name = f"chat_{conversation_id}.png"
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_name)
+        lsb.hide(image_path, chat_content).save(image_path)
+        conn.execute('UPDATE conversations SET image_name = ? WHERE id = ?', (image_name, conversation_id))
+        conn.commit()
+        conn.close()
+        return send_file(image_path, as_attachment=True)
+    conn.close()
+    flash("Conversation not found.")
+    return redirect(url_for('chat'))
+
+@app.route('/delete_conversation/<int:conversation_id>', methods=['POST'])
+@login_required
+def delete_conversation(conversation_id):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM messages WHERE conversation_id = ?', (conversation_id,))
+    conn.execute('DELETE FROM conversations WHERE id = ?', (conversation_id,))
     conn.commit()
     conn.close()
-    return jsonify({'success': True})
+    flash("Conversation deleted.")
+    return redirect(url_for('chat'))
 
-@app.route('/chat_with/<contact>', methods=['GET', 'POST'])
+@app.route('/chat_settings/<int:conversation_id>', methods=['GET', 'POST'])
 @login_required
-def chat_with(contact):
-    conn = get_db_connection()
-    conversation = conn.execute('''
-        SELECT * FROM conversations WHERE user_id = ? AND contact = ?
-    ''', (current_user.id, contact)).fetchone()
-    if not conversation:
-        flash('Conversation does not exist.')
-        conn.close()
-        return redirect(url_for('chat'))
+def chat_settings(conversation_id):
     if request.method == 'POST':
-        message_text = request.form['message']
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        conn.execute('''
-            INSERT INTO messages (conversation_id, sender_id, message_text, timestamp)
-            VALUES (?, ?, ?, ?)
-        ''', (conversation['id'], current_user.id, message_text, timestamp))
-        conn.commit()
-        # Update last_message_time
-        conn.execute('''
-            UPDATE conversations SET last_message_time = ?
-            WHERE id = ?
-        ''', (timestamp, conversation['id']))
-        conn.commit()
-        # For AJAX response
-        messages = conn.execute('''
-            SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC
-        ''', (conversation['id'],)).fetchall()
-        messages_html = render_template('messages.html', messages=messages, contact=contact)
-        conn.close()
-        return jsonify({'messages_html': messages_html})
-    messages = conn.execute('''
-        SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC
-    ''', (conversation['id'],)).fetchall()
-    image_list = [f for f in os.listdir(IMAGES_FOLDER) if os.path.isfile(os.path.join(IMAGES_FOLDER, f))]
-    background_image = random.choice(image_list) if image_list else None
-    conn.close()
-    return render_template('chat_with.html', contact=contact, messages=messages, background_image=background_image)
+        background_image = request.files.get('background_image')
+        if background_image and allowed_file(background_image.filename):
+            filename = secure_filename(background_image.filename)
+            background_image.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            conn = get_db_connection()
+            conn.execute('UPDATE conversations SET background_image = ? WHERE id = ?', (filename, conversation_id))
+            conn.commit()
+            conn.close()
+            flash("Chat settings updated.")
+            return redirect(url_for('chat', conversation_id=conversation_id))
+    return render_template('chat_settings.html', conversation_id=conversation_id)
 
-@app.route('/exit_chat/<contact>', methods=['GET', 'POST'])
-@login_required
-def exit_chat(contact):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    if request.method == 'POST':
-        password = request.form['password']
-        conn = get_db_connection()
-        messages = conn.execute('''
-            SELECT * FROM messages
-            WHERE conversation_id = (SELECT id FROM conversations WHERE user_id = ? AND contact = ?)
-            ORDER BY timestamp ASC
-        ''', (session['user_id'], contact)).fetchall()
-        conn.close()
-        
-        # Create a comma-separated list of messages
-        message_list = [f"{msg['sender_id']},{msg['timestamp']},{msg['message_text']}" for msg in messages]
-        message_text = "\n".join(message_list)
-        
-        # Encrypt the message text
-        key = Fernet.generate_key()
-        cipher_suite = Fernet(key)
-        encrypted_text = cipher_suite.encrypt(message_text.encode()).decode()
-        
-        # Embed in image
-        image_name = embed_in_image(encrypted_text, session['user_id'])
-        
-        # Update conversation in DB
-        conn = get_db_connection()
-        conn.execute('''
-            UPDATE conversations
-            SET encrypted_messages = ?, encryption_key = ?, image_name = ?
-            WHERE user_id = ? AND contact = ?
-        ''', (encrypted_text, key.decode(), image_name, session['user_id'], contact))
-        conn.commit()
-        conn.close()
-        
-        flash('Messages encrypted and stored.')
-        return redirect(url_for('chat'))
-    return render_template('encrypt.html', contact=contact)
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@app.route('/restore_chat/<contact>', methods=['GET', 'POST'])
-@login_required
-def restore_chat(contact):
-    if request.method == 'POST':
-        image_path = request.form['image_path']
-        password = request.form['password']
-        decrypted_text = decrypt_messages(image_path, password)
-        # Convert the decrypted text back to messages and display them
-        messages = []
-        for line in decrypted_text.split('\n'):
-            sender_id, timestamp, message_text = line.split(',')
-            messages.append({'sender_id': sender_id, 'timestamp': timestamp, 'message_text': message_text})
-        return render_template('chat_with.html', messages=messages, contact=contact)
-    return render_template('restore_chat.html', contact=contact)
-
-@app.route('/images/<path:filename>')
-def images(filename):
-    return send_from_directory(IMAGES_FOLDER, filename)
-
-@app.route('/about')
-def about():
-    return render_template('about.html')
-
-@app.route('/search_users')
+@app.route('/search_users', methods=['POST'])
 @login_required
 def search_users():
-    query = request.args.get('q', '')
+    data = request.get_json()
+    search_query = data.get('search_query', '')
     conn = get_db_connection()
-    users = conn.execute('SELECT username FROM users WHERE username LIKE ?', ('%' + query + '%',)).fetchall()
+    users = conn.execute("SELECT username FROM users WHERE username LIKE ?", ('%' + search_query + '%',)).fetchall()
     conn.close()
-    return jsonify({'users': [dict(user) for user in users]})
+    usernames = [user['username'] for user in users]
+    return jsonify(usernames=usernames)
+
+@app.route('/restore_chat/<int:conversation_id>', methods=['GET'])
+@login_required
+def restore_chat(conversation_id):
+    conn = get_db_connection()
+    conversation = conn.execute('SELECT * FROM conversations WHERE id = ?', (conversation_id,)).fetchone()
+    conn.close()
+    if not conversation or not conversation['image_name']:
+        flash("No chat history to restore.")
+        return redirect(url_for('chat', conversation_id=conversation_id))
+    # Path to the saved image with the chat data
+    image_path = os.path.join(app.config['UPLOAD_FOLDER'], conversation['image_name'])
+    try:
+        # Decode the hidden chat content from the image
+        restored_chat_content = lsb.reveal(image_path)
+        if not restored_chat_content:
+            flash("Failed to restore chat.")
+            return redirect(url_for('chat', conversation_id=conversation_id))
+        # Reinsert the restored messages into the database
+        messages = restored_chat_content.split("\n")
+        conn = get_db_connection()
+        for message_text in messages:
+            conn.execute('''
+                INSERT INTO messages (conversation_id, sender_id, message_text, timestamp)
+                VALUES (?, ?, ?, ?)
+            ''', (conversation_id, current_user.id, message_text, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        conn.close()
+        flash("Chat restored.")
+    except Exception as e:
+        flash("Failed to restore chat.")
+    return redirect(url_for('chat', conversation_id=conversation_id))
+
+@app.route('/about', methods=['GET', 'POST'])
+def about():
+    return render_template('about.html')
 
 if __name__ == '__main__':
     app.run(debug=True)

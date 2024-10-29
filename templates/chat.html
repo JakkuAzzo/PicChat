@@ -1,3 +1,4 @@
+<!-- templates/chat.html -->
 {% extends 'base.html' %}
 {% block title %}PicChat - Chat{% endblock %}
 {% block content %}
@@ -9,22 +10,34 @@
             <h3>Conversations</h3>
             <button class="plus-button" onclick="toggleSearch()">+</button>
             <div id="search-container" style="display: none;">
-                <input type="text" id="search-input" placeholder="Search for users..." oninput="searchUsers()">
-                <ul id="search-results"></ul>
+                <input type="text" id="search-input" placeholder="Enter username..." autocomplete="off" oninput="searchUsers()">
+                <div id="search-results"></div>
             </div>
         </div>
         <ul class="conversations-list">
             {% if conversations %}
                 {% for convo in conversations %}
                     <li>
-                        <a href="{{ url_for('chat_with', contact=convo['contact']) }}">{{ convo['contact'] }}</a>
+                        <a href="javascript:void(0);" onclick="loadConversation({{ convo['id'] }})">{{ convo['contact_username'] }}</a>
                         <span class="last-message-time">{{ convo['last_message_time'] }}</span>
+                        <div class="conversation-options">
+                            <a href="{{ url_for('download_conversation', conversation_id=convo['id']) }}">Download</a>
+                            <form action="{{ url_for('delete_conversation', conversation_id=convo['id']) }}" method="post" style="display:inline;">
+                                <button type="submit">Delete</button>
+                            </form>
+                            <a href="{{ url_for('chat_settings', conversation_id=convo['id']) }}">Settings</a>
+                        </div>
                     </li>
                 {% endfor %}
             {% else %}
-                <p>You have no conversations. Use the option below to start a new conversation.</p>
+                <p>No conversations yet. Use '+' to start a new one.</p>
             {% endif %}
         </ul>
+    </div>
+    
+    <!-- Main Chat Area -->
+    <div class="main-chat" id="main-chat">
+        <p>Select a conversation to start chatting.</p>
     </div>
 </div>
 {% endblock %}
@@ -45,41 +58,72 @@
 
     function searchUsers() {
         const query = document.getElementById('search-input').value;
-        if (query.length < 2) {
-            document.getElementById('search-results').innerHTML = '';
-            return;
-        }
-        fetch(`/search_users?q=${query}`)
-            .then(response => response.json())
-            .then(data => {
-                const resultsContainer = document.getElementById('search-results');
-                resultsContainer.innerHTML = '';
-                data.users.forEach(user => {
-                    const li = document.createElement('li');
-                    li.textContent = user.username;
-                    li.onclick = () => startConversation(user.username);
-                    resultsContainer.appendChild(li);
+        if (query.length > 1) {
+            fetch('{{ url_for("search_users") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ search_query: query })
+            }).then(response => response.json()).then(data => {
+                const results = document.getElementById('search-results');
+                results.innerHTML = '';
+                data.usernames.forEach(username => {
+                    const div = document.createElement('div');
+                    div.textContent = username;
+                    div.onclick = () => startConversation(username);
+                    results.appendChild(div);
                 });
             });
+        }
     }
 
     function startConversation(username) {
-        fetch(`/start_conversation`, {
+        fetch('{{ url_for("start_conversation") }}', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contact: username })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                window.location.href = `/chat_with/${username}`;
+        }).then(response => {
+            if (response.ok) {
+                window.location.reload();
             } else {
-                alert(data.message);
+                alert('Failed to start conversation.');
             }
         });
     }
+
+    function loadConversation(conversationId) {
+    $.ajax({
+        url: "{{ url_for('chat') }}",
+        type: "GET",
+        data: { conversation_id: conversationId },
+        success: function(response) {
+            console.log(response); // Log the response to check its content
+            $('#main-chat').html(response);
+        },
+        error: function() {
+            alert('Failed to load conversation.');
+        }
+    });
+}
+
+    $(document).ready(function() {
+        $('#message-form').on('submit', function(event) {
+            event.preventDefault(); // Prevent default form submission
+            $.ajax({
+                url: "{{ url_for('send_message') }}",
+                type: "POST",
+                data: $(this).serialize(),
+                success: function(response) {
+                    $('#chat-messages').html(response.messages_html);
+                    $('#message-form')[0].reset();
+                    $('#error-message').hide();
+                    // Scroll to the bottom of the chat messages
+                    $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+                },
+                error: function() {
+                    alert('Failed to send message.');
+                }
+            });
+        });
+    });
 </script>
 {% endblock %}

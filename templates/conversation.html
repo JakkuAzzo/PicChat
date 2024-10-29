@@ -1,0 +1,25 @@
+<!-- templates/conversation.html -->
+{% if messages %}
+    <div class="chat-header">
+        <h2>Chat with {{ messages[0].sender_username }}</h2>
+        <a href="{{ url_for('exit_chat', conversation_id=conversation_id) }}" class="exit-chat-button">Exit Chat</a>
+    </div>
+    <div class="chat-messages" id="chat-messages">
+        {% for message in messages %}
+            <div class="chat-message {% if message.sender_id == current_user.id %}you{% else %}other{% endif %}">
+                <p>{{ message.message_text }}</p>
+                <div class="message-info">{{ message.sender_username }} - {{ message.timestamp }}</div>
+            </div>
+        {% endfor %}
+    </div>
+    <div class="chat-input">
+        <form id="message-form" action="{{ url_for('send_message') }}" method="post">
+            {{ csrf_token() }}
+            <input type="hidden" name="conversation_id" value="{{ conversation_id }}">
+            <input type="text" name="message_text" placeholder="Type your message..." required>
+            <button type="submit">&#9658;</button>
+        </form>
+    </div>
+{% else %}
+    <p>No messages in this conversation.</p>
+{% endif %}
