@@ -1,6 +1,10 @@
 /* static/styles.css */
 
 /* General Styles */
+.chat-input {
+    display: none;
+}
+
 body {
     margin: 0;
     padding: 0;

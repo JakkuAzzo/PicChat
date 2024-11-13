@@ -3,7 +3,7 @@ import sqlite3
 import os
 import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_wtf.csrf import CSRFProtect
+#from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, login_required, login_user, logout_user, UserMixin, current_user
 from stegano import lsb
 from werkzeug.utils import secure_filename
@@ -11,7 +11,7 @@ import random
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
-csrf = CSRFProtect(app)
+#csrf = CSRFProtect(app)
 app.config['WTF_CSRF_TIME_LIMIT'] = None  # Disable CSRF token expiration
 app.config['WTF_CSRF_SSL_STRICT'] = False  # Allow HTTP (not just HTTPS)
 app.config['WTF_CSRF_CHECK_DEFAULT'] = False
@@ -194,8 +194,21 @@ def send_message():
         WHERE id = ?
     ''', (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), conversation_id))
     conn.commit()
+    
+    # Fetch updated messages
+    messages = conn.execute('''
+        SELECT m.*, u.username AS sender_username
+        FROM messages m
+        JOIN users u ON m.sender_id = u.id
+        WHERE m.conversation_id = ?
+        ORDER BY m.timestamp ASC
+    ''', (conversation_id,)).fetchall()
     conn.close()
-    return redirect(url_for('chat', conversation_id=conversation_id))
+    
+    # Convert messages to a list of dictionaries
+    messages_list = [{'sender_id': msg['sender_id'], 'message_text': msg['message_text'], 'timestamp': msg['timestamp'], 'sender_username': msg['sender_username']} for msg in messages]
+    
+    return jsonify(messages=messages_list)
 
 @app.route('/exit_chat/<int:conversation_id>', methods=['POST'])
 @login_required
@@ -258,13 +271,27 @@ def download_conversation(conversation_id):
         messages = conn.execute('SELECT message_text FROM messages WHERE conversation_id = ?', (conversation_id,)).fetchall()
         message_texts = [message['message_text'] for message in messages]
         chat_content = "\n".join(message_texts)
+        
+        # Randomly select an image from the /workspaces/PicChat/images directory
+        images_dir = '/workspaces/PicChat/images'
+        image_files = [f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))]
+        if not image_files:
+            flash("No images available for steganography.")
+            return redirect(url_for('chat'))
+        
+        selected_image = random.choice(image_files)
+        selected_image_path = os.path.join(images_dir, selected_image)
+        
+        # Save the steganographed image
         image_name = f"chat_{conversation_id}.png"
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_name)
-        lsb.hide(image_path, chat_content).save(image_path)
+        lsb.hide(selected_image_path, chat_content).save(image_path)
+        
         conn.execute('UPDATE conversations SET image_name = ? WHERE id = ?', (image_name, conversation_id))
         conn.commit()
         conn.close()
         return send_file(image_path, as_attachment=True)
+    
     conn.close()
     flash("Conversation not found.")
     return redirect(url_for('chat'))
@@ -347,4 +374,4 @@ def about():
     return render_template('about.html')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5001)

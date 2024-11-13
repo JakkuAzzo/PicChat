@@ -98,6 +98,7 @@
         success: function(response) {
             console.log(response); // Log the response to check its content
             $('#main-chat').html(response);
+            document.querySelector('.chat-input').style.display = 'block';
         },
         error: function() {
             alert('Failed to load conversation.');
@@ -109,15 +110,12 @@
         $('#message-form').on('submit', function(event) {
             event.preventDefault(); // Prevent default form submission
             $.ajax({
-                url: "{{ url_for('send_message') }}",
-                type: "POST",
+                url: $(this).attr('action'),
+                type: $(this).attr('method'),
                 data: $(this).serialize(),
                 success: function(response) {
-                    $('#chat-messages').html(response.messages_html);
-                    $('#message-form')[0].reset();
-                    $('#error-message').hide();
-                    // Scroll to the bottom of the chat messages
-                    $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+                    loadConversation($('input[name="conversation_id"]').val()); // Reload the conversation
+                    $('#message-form')[0].reset(); // Reset the form
                 },
                 error: function() {
                     alert('Failed to send message.');
