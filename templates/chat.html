@@ -28,6 +28,8 @@
                     <div id="key-input" style="display: none;">
                         <label for="key">Enter Decryption Key:</label>
                         <input type="text" name="key" id="key">
+                        <label for="key_file">Or Upload Key File:</label>
+                        <input type="file" name="key_file" id="key_file" accept=".key">
                     </div>
                     <button type="submit">Restore</button>
                     <button type="button" onclick="hideRestoreDialog()">Cancel</button>
@@ -79,6 +81,13 @@
                 document.getElementById('key-input').style.display = 'none';
             }
         });
+    });
+
+    document.querySelector('input[name="decrypt_option"][value="encrypted"]').addEventListener('change', function() {
+        document.getElementById('key-input').style.display = 'block';
+    });
+    document.querySelector('input[name="decrypt_option"][value="plain"]').addEventListener('change', function() {
+        document.getElementById('key-input').style.display = 'none';
     });
 
     $(document).ready(function() {
@@ -162,31 +171,30 @@
                     success: function(response) {
                         let resultsHtml = '';
                         response.results.forEach(function(user) {
-                            resultsHtml += '<div><a href="javascript:void(0);" onclick="startConversation(' + user.id + ')">' + user.username + '</a></div>';
+                            resultsHtml += `<div class="search-result" onclick="startConversation('${user.username}')">${user.username}</div>`;
                         });
                         $('#search-results').html(resultsHtml);
                     },
                     error: function() {
-                        $('#search-results').html('<div>Error searching users.</div>');
+                        alert('Error searching users.');
                     }
                 });
             } else {
                 $('#search-results').html('');
             }
         }
-
-        // Function to start a conversation
-        function startConversation(userId) {
+    
+        function startConversation(username) {
             $.ajax({
                 url: "{{ url_for('start_conversation') }}",
                 type: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify({ contact_id: userId }),
+                data: JSON.stringify({ username: username }),
                 success: function(response) {
                     loadConversation(response.conversation_id);
                 },
                 error: function() {
-                    alert('Failed to start conversation.');
+                    alert('Error starting conversation.');
                 }
             });
         }

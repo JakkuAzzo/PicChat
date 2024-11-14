@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 import sqlite3
 import os
 import datetime
+from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, login_required, login_user, logout_user, UserMixin, current_user
@@ -203,18 +204,16 @@ def send_message():
     conversation_id = request.form['conversation_id']
     message_text = request.form['message_text']
     conn = get_db_connection()
-
     conn.execute('''
         INSERT INTO messages (conversation_id, sender_id, message_text, timestamp)
         VALUES (?, ?, ?, ?)
-    ''', (conversation_id, current_user.id, message_text, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    ''', (conversation_id, current_user.id, message_text, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     conn.execute('''
         UPDATE conversations
         SET last_message_time = ?
         WHERE id = ?
-    ''', (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), conversation_id))
+    ''', (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), conversation_id))
     conn.commit()
-
     # Fetch updated messages
     messages = conn.execute('''
         SELECT m.*, u.username AS sender_username
@@ -224,14 +223,12 @@ def send_message():
         ORDER BY m.timestamp ASC
     ''', (conversation_id,)).fetchall()
     conn.close()
-
     # Render the messages partial template
     rendered = render_template('messages.html', messages=messages)
     response = make_response(rendered)
-    response.headers['Content-Type'] = 'text/html; charset=utf-8'
     return response
 
-@app.route('/exit_chat/<int:conversation_id>', methods=['GET', 'POST'])
+@app.route('/exit_chat/<int:conversation_id>', methods=['POST'])
 @login_required
 def exit_chat(conversation_id):
     if request.method == 'POST':
@@ -299,9 +296,18 @@ def exit_chat(conversation_id):
             conn.commit()
             conn.close()
             
+            # Add the steganographed image as a message
+            conn = get_db_connection()
+            conn.execute(
+                'INSERT INTO messages (conversation_id, sender_id, message_text, timestamp) VALUES (?, ?, ?, ?)',
+                (conversation_id, current_user.id, f'<img src="{url_for("static", filename=image_name)}" alt="Steganographed Image">', datetime.utcnow())
+            )
+            conn.commit()
+            conn.close()
+            
             if option == 'encrypt':
-                # Provide the key file to the user
-                return send_file(key_path, as_attachment=True)
+                # Provide the key file and the image to the user
+                return send_file(image_path, as_attachment=True)
             else:
                 return send_file(image_path, as_attachment=True)
         else:
@@ -312,20 +318,21 @@ def exit_chat(conversation_id):
         return render_template('exit_chat.html', conversation_id=conversation_id)
 
 def encrypt(content, key):
-    # Ensure the key is 16, 24, or 32 bytes long
-    key = key.ljust(32)[:32].encode('utf-8')
-    # Generate a random Initialization Vector (IV)
+    if isinstance(key, bytes):
+        key = key.decode('latin-1')  # Decode bytes to string using latin-1
+    key = key.ljust(32)[:32].encode('latin-1')  # Encode back to bytes using latin-1
     iv = get_random_bytes(16)
     cipher = AES.new(key, AES.MODE_CBC, iv)
-    # Pad the content to be a multiple of block size and encrypt
     ct_bytes = cipher.encrypt(pad(content.encode('utf-8'), AES.block_size))
-    # Prepend the IV for use in decryption
     return iv + ct_bytes
 
 def decrypt(enc_content, key):
+    if isinstance(key, bytes):
+        key = key.decode('latin-1')  # Decode bytes to string using latin-1
+    key = key.ljust(32)[:32].encode('latin-1')  # Encode back to bytes using latin-1
     iv = enc_content[:16]
     ct = enc_content[16:]
-    cipher = AES.new(key.ljust(32)[:32], AES.MODE_CBC, iv)
+    cipher = AES.new(key, AES.MODE_CBC, iv)
     pt = unpad(cipher.decrypt(ct), AES.block_size)
     return pt.decode('utf-8')
 
@@ -388,35 +395,30 @@ def create_new_conversation(users):
 @login_required
 def start_conversation():
     data = request.get_json()
-    contact_id = data.get('contact_id')
+    app.logger.info(f"Request data: {data}")
+    user2_username = data.get('username')
+    if not user2_username:
+        app.logger.warning("No username provided in the request.")
+        return jsonify({'error': 'No username provided'}), 400
+
+    app.logger.info(f"Starting conversation with user: {user2_username}")
     conn = get_db_connection()
-    contact = conn.execute('SELECT * FROM users WHERE id = ?', (contact_id,)).fetchone()
-    if not contact:
-        flash('User does not exist.')
+    user2 = conn.execute('SELECT id FROM users WHERE username = ?', (user2_username,)).fetchone()
+    if user2:
+        user1_id = current_user.id
+        user2_id = user2['id']
+        conn.execute('''
+            INSERT INTO conversations (user1_id, user2_id, created_at)
+            VALUES (?, ?, ?)
+        ''', (user1_id, user2_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        conversation_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
         conn.close()
-        return jsonify({'error': 'User does not exist'}), 404
-    contact_id = contact['id']
-    current_user_id = current_user.id
-    # Ensure consistent ordering
-    user1_id, user2_id = sorted([current_user_id, contact_id])
-    # Check if conversation already exists
-    conversation = conn.execute('''
-        SELECT * FROM conversations WHERE user1_id = ? AND user2_id = ?
-    ''', (user1_id, user2_id)).fetchone()
-    if conversation:
+        return jsonify({'conversation_id': conversation_id})
+    else:
+        app.logger.warning(f"User not found: {user2_username}")
         conn.close()
-        return jsonify({'conversation_id': conversation['id']}), 200
-    # Create new conversation
-    conn.execute('''
-        INSERT INTO conversations (user1_id, user2_id, last_message_time)
-        VALUES (?, ?, ?)
-    ''', (user1_id, user2_id, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-    conn.commit()
-    # Retrieve the new conversation ID
-    conversation_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
-    conn.close()
-    flash('Conversation started.')
-    return jsonify({'conversation_id': conversation_id}), 200
+        return jsonify({'error': 'User not found'}), 404
 
 @app.route('/download_conversation/<int:conversation_id>', methods=['GET'])
 @login_required
@@ -500,17 +502,15 @@ def restore_chat():
     if request.method == 'POST':
         decrypt_option = request.form.get('decrypt_option')
         key = request.form.get('key')
+        key_file = request.files.get('key_file')
         image_file = request.files.get('image_file')
-
         if not image_file:
             flash("No image file provided.")
             return redirect(url_for('chat'))
-
         # Save the uploaded image temporarily
         image_filename = secure_filename(image_file.filename)
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_filename)
         image_file.save(image_path)
-
         try:
             # Extract hidden content using steganography
             hidden_content = lsb.reveal(image_path)
@@ -518,10 +518,11 @@ def restore_chat():
                 flash("No hidden content found in the image.")
                 os.remove(image_path)
                 return redirect(url_for('chat'))
-
             # Decrypt if necessary
             if decrypt_option == 'encrypted':
-                if not key:
+                if key_file:
+                    key = key_file.read()
+                elif not key:
                     flash("Decryption key is required.")
                     os.remove(image_path)
                     return redirect(url_for('chat'))
@@ -530,7 +531,6 @@ def restore_chat():
                 restored_chat_content = decrypt(encrypted_content, key.encode('utf-8'))
             else:
                 restored_chat_content = hidden_content
-
             # Process the restored chat content
             messages = restored_chat_content.split("\n")
             # Check if the restored conversation includes the current user
@@ -544,7 +544,6 @@ def restore_chat():
             else:
                 # Create a new conversation
                 conversation_id = create_new_conversation(conversation_users)
-
             # Insert messages into the database
             conn = get_db_connection()
             for message_text in messages:
@@ -558,12 +557,7 @@ def restore_chat():
                 conn.execute('''
                     INSERT INTO messages (conversation_id, sender_id, message_text, timestamp)
                     VALUES (?, ?, ?, ?)
-                ''', (
-                    conversation_id,
-                    sender_id,
-                    text,
-                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                ))
+                ''', (conversation_id, sender_id, text, datetime.utcnow()))
             conn.commit()
             conn.close()
             flash("Conversation restored successfully.")

@@ -8,7 +8,7 @@
 </form>
 <script>
     function cancelExit() {
-        window.location.href = "{{ url_for('chat', conversation_id=conversation_id) }}";
+        document.getElementById('exit-chat-form').style.display = 'none';
     }
     
     function exitChat(conversationId) {

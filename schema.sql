@@ -4,25 +4,23 @@ DROP TABLE IF EXISTS conversations;
 DROP TABLE IF EXISTS messages;
 
 -- Create users table
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL
 );
 
--- Create conversations table
-CREATE TABLE conversations (
+CREATE TABLE IF NOT EXISTS conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user1_id INTEGER NOT NULL,
     user2_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
     last_message_time TEXT,
-    image_name TEXT,
     FOREIGN KEY (user1_id) REFERENCES users (id),
     FOREIGN KEY (user2_id) REFERENCES users (id)
 );
 
--- Create messages table
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     conversation_id INTEGER NOT NULL,
     sender_id INTEGER NOT NULL,
