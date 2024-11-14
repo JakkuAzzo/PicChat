@@ -1,17 +1,22 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, send_file, make_response
 import sqlite3
 import os
 import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-#from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, login_required, login_user, logout_user, UserMixin, current_user
 from stegano import lsb
 from werkzeug.utils import secure_filename
 import random
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+from Crypto.Random import get_random_bytes
+import base64
+from PIL import Image
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
-#csrf = CSRFProtect(app)
+csrf = CSRFProtect(app)
 app.config['WTF_CSRF_TIME_LIMIT'] = None  # Disable CSRF token expiration
 app.config['WTF_CSRF_SSL_STRICT'] = False  # Allow HTTP (not just HTTPS)
 app.config['WTF_CSRF_CHECK_DEFAULT'] = False
@@ -29,6 +34,7 @@ if not os.path.exists(IMAGES_FOLDER):
     os.makedirs(IMAGES_FOLDER)
 
 app.config['UPLOAD_FOLDER'] = IMAGES_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 # User model for Flask-Login
@@ -184,6 +190,7 @@ def send_message():
     conversation_id = request.form['conversation_id']
     message_text = request.form['message_text']
     conn = get_db_connection()
+
     conn.execute('''
         INSERT INTO messages (conversation_id, sender_id, message_text, timestamp)
         VALUES (?, ?, ?, ?)
@@ -194,7 +201,7 @@ def send_message():
         WHERE id = ?
     ''', (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), conversation_id))
     conn.commit()
-    
+
     # Fetch updated messages
     messages = conn.execute('''
         SELECT m.*, u.username AS sender_username
@@ -204,41 +211,178 @@ def send_message():
         ORDER BY m.timestamp ASC
     ''', (conversation_id,)).fetchall()
     conn.close()
-    
-    # Convert messages to a list of dictionaries
-    messages_list = [{'sender_id': msg['sender_id'], 'message_text': msg['message_text'], 'timestamp': msg['timestamp'], 'sender_username': msg['sender_username']} for msg in messages]
-    
-    return jsonify(messages=messages_list)
 
-@app.route('/exit_chat/<int:conversation_id>', methods=['POST'])
+    # Render the messages partial template
+    rendered = render_template('messages.html', messages=messages)
+    response = make_response(rendered)
+    response.headers['Content-Type'] = 'text/html; charset=utf-8'
+    return response
+
+@app.route('/exit_chat/<int:conversation_id>', methods=['GET', 'POST'])
 @login_required
 def exit_chat(conversation_id):
+    if request.method == 'POST':
+        option = request.form.get('option')
+        conn = get_db_connection()
+        conversation = conn.execute(
+            'SELECT * FROM conversations WHERE id = ?', (conversation_id,)
+        ).fetchone()
+        
+        if conversation:
+            # Fetch messages
+            messages = conn.execute(
+                'SELECT message_text FROM messages WHERE conversation_id = ?', (conversation_id,)
+            ).fetchall()
+            message_texts = [message['message_text'] for message in messages]
+            chat_content = "\n".join(message_texts)
+            
+            # Determine whether to encrypt
+            if option == 'encrypt':
+                # Generate a key and encrypt the content
+                key = get_random_bytes(32)  # 32 bytes for AES-256
+                encrypted_content = encrypt(chat_content, key)
+                # Encode the encrypted content to base64 to store as text
+                hidden_content = base64.b64encode(encrypted_content).decode('utf-8')
+                
+                # In the exit_chat route after encryption
+                key_filename = f'key_{conversation_id}.key'
+                key_path = os.path.join(app.config['UPLOAD_FOLDER'], key_filename)
+                with open(key_path, 'wb') as key_file:
+                    key_file.write(key)
+                # Provide the key file to the user
+                flash("Chat encrypted and saved. Please download your decryption key.")
+            else:
+                hidden_content = chat_content
+                flash("Chat saved without encryption.")
+
+            # Hide the content in an image using steganography
+            images_dir = '/workspaces/PicChat/images'
+            image_files = [
+                f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))
+            ]
+            if not image_files:
+                flash("No images available for steganography.")
+                return redirect(url_for('chat'))
+            selected_image = random.choice(image_files)
+            selected_image_path = os.path.join(images_dir, selected_image)
+            
+            # Open the image and convert to RGB if necessary
+            image = Image.open(selected_image_path)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            image_name = f"chat_{conversation_id}.png"
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_name)
+            lsb.hide(image, hidden_content).save(image_path)
+            
+            # Update the conversation record
+            conn.execute(
+                'UPDATE conversations SET image_name = ? WHERE id = ?',
+                (image_name, conversation_id)
+            )
+            # Delete messages from the database
+            conn.execute(
+                'DELETE FROM messages WHERE conversation_id = ?', (conversation_id,)
+            )
+            conn.commit()
+            conn.close()
+            
+            if option == 'encrypt':
+                # Provide the key file to the user
+                return send_file(key_path, as_attachment=True)
+            else:
+                return redirect(url_for('chat'))
+        else:
+            flash("Conversation not found.")
+            return redirect(url_for('chat'))
+    else:
+        # Render a template to choose encryption option
+        return render_template('exit_chat.html', conversation_id=conversation_id)
+
+def encrypt(content, key):
+    # Ensure the key is 16, 24, or 32 bytes long
+    key = key.ljust(32)[:32].encode('utf-8')
+    # Generate a random Initialization Vector (IV)
+    iv = get_random_bytes(16)
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    # Pad the content to be a multiple of block size and encrypt
+    ct_bytes = cipher.encrypt(pad(content.encode('utf-8'), AES.block_size))
+    # Prepend the IV for use in decryption
+    return iv + ct_bytes
+
+def decrypt(enc_content, key):
+    iv = enc_content[:16]
+    ct = enc_content[16:]
+    cipher = AES.new(key.ljust(32)[:32], AES.MODE_CBC, iv)
+    pt = unpad(cipher.decrypt(ct), AES.block_size)
+    return pt.decode('utf-8')
+
+def extract_users_from_messages(messages):
+    users = set()
+    for message in messages:
+        if ':' in message:
+            username, _ = message.split(':', 1)
+            users.add(username.strip())
+    return users
+
+def parse_message(message_text):
+    if ':' in message_text:
+        username, text = message_text.split(':', 1)
+        return username.strip(), text.strip()
+    else:
+        return current_user.username, message_text.strip()
+
+def find_conversation_with_users(users):
     conn = get_db_connection()
-    conversation = conn.execute('SELECT * FROM conversations WHERE id = ?', (conversation_id,)).fetchone()
-    if conversation:
-        messages = conn.execute('SELECT message_text FROM messages WHERE conversation_id = ?', (conversation_id,)).fetchall()
-        message_texts = [message['message_text'] for message in messages]
-        chat_content = "\n".join(message_texts)
-        image_name = f"chat_{conversation_id}.png"
-        lsb.hide(os.path.join(app.config['UPLOAD_FOLDER'], image_name), chat_content).save(image_name)
-        conn.execute('UPDATE conversations SET image_name = ? WHERE id = ?', (image_name, conversation_id))
-        conn.execute('DELETE FROM messages WHERE conversation_id = ?', (conversation_id,))
-        conn.commit()
+    # Fetch conversations involving the current user
+    conversations = conn.execute('''
+        SELECT c.id, u.username AS contact_username
+        FROM conversations c
+        JOIN users u ON (u.id = CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END)
+        WHERE c.user1_id = ? OR c.user2_id = ?
+    ''', (current_user.id, current_user.id, current_user.id)).fetchall()
     conn.close()
-    flash("Chat saved and exited.")
-    return redirect(url_for('chat'))
+    for convo in conversations:
+        if convo['contact_username'] in users:
+            return convo['id']
+    return None
+
+def create_new_conversation(users):
+    conn = get_db_connection()
+    # For simplicity, pick one user to start the conversation with
+    other_username = next(iter(users - {current_user.username}), None)
+    if not other_username:
+        other_username = current_user.username
+    other_user = conn.execute('SELECT id FROM users WHERE username = ?', (other_username,)).fetchone()
+    if other_user:
+        user1_id, user2_id = sorted([current_user.id, other_user['id']])
+        conn.execute('''
+            INSERT INTO conversations (user1_id, user2_id, last_message_time)
+            VALUES (?, ?, ?)
+        ''', (
+            user1_id,
+            user2_id,
+            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
+        conn.commit()
+        conversation_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.close()
+        return conversation_id
+    else:
+        conn.close()
+        return None
 
 @app.route('/start_conversation', methods=['POST'])
 @login_required
 def start_conversation():
     data = request.get_json()
-    contact_username = data.get('contact', '')
+    contact_id = data.get('contact_id')
     conn = get_db_connection()
-    contact = conn.execute('SELECT * FROM users WHERE username = ?', (contact_username,)).fetchone()
+    contact = conn.execute('SELECT * FROM users WHERE id = ?', (contact_id,)).fetchone()
     if not contact:
         flash('User does not exist.')
         conn.close()
-        return redirect(url_for('chat'))
+        return jsonify({'error': 'User does not exist'}), 404
     contact_id = contact['id']
     current_user_id = current_user.id
     # Ensure consistent ordering
@@ -249,7 +393,7 @@ def start_conversation():
     ''', (user1_id, user2_id)).fetchone()
     if conversation:
         conn.close()
-        return redirect(url_for('chat', conversation_id=conversation['id']))
+        return jsonify({'conversation_id': conversation['id']}), 200
     # Create new conversation
     conn.execute('''
         INSERT INTO conversations (user1_id, user2_id, last_message_time)
@@ -260,7 +404,7 @@ def start_conversation():
     conversation_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
     conn.close()
     flash('Conversation started.')
-    return redirect(url_for('chat', conversation_id=conversation_id))
+    return jsonify({'conversation_id': conversation_id}), 200
 
 @app.route('/download_conversation/<int:conversation_id>', methods=['GET'])
 @login_required
@@ -282,19 +426,20 @@ def download_conversation(conversation_id):
         selected_image = random.choice(image_files)
         selected_image_path = os.path.join(images_dir, selected_image)
         
+        # Open the image and convert to RGB if necessary
+        image = Image.open(selected_image_path)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
         # Save the steganographed image
         image_name = f"chat_{conversation_id}.png"
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_name)
-        lsb.hide(selected_image_path, chat_content).save(image_path)
+        lsb.hide(image, chat_content).save(image_path)
         
-        conn.execute('UPDATE conversations SET image_name = ? WHERE id = ?', (image_name, conversation_id))
-        conn.commit()
-        conn.close()
         return send_file(image_path, as_attachment=True)
-    
-    conn.close()
-    flash("Conversation not found.")
-    return redirect(url_for('chat'))
+    else:
+        flash("Conversation not found.")
+        return redirect(url_for('chat'))
 
 @app.route('/delete_conversation/<int:conversation_id>', methods=['POST'])
 @login_required
@@ -330,44 +475,93 @@ def allowed_file(filename):
 @login_required
 def search_users():
     data = request.get_json()
-    search_query = data.get('search_query', '')
+    query = data.get('query', '')
     conn = get_db_connection()
-    users = conn.execute("SELECT username FROM users WHERE username LIKE ?", ('%' + search_query + '%',)).fetchall()
+    users = conn.execute("SELECT id, username FROM users WHERE username LIKE ?", ('%' + query + '%',)).fetchall()
     conn.close()
-    usernames = [user['username'] for user in users]
-    return jsonify(usernames=usernames)
+    results = [{'id': user['id'], 'username': user['username']} for user in users]
+    return jsonify(results=results)
 
-@app.route('/restore_chat/<int:conversation_id>', methods=['GET'])
+@app.route('/restore_chat', methods=['GET', 'POST'])
 @login_required
-def restore_chat(conversation_id):
-    conn = get_db_connection()
-    conversation = conn.execute('SELECT * FROM conversations WHERE id = ?', (conversation_id,)).fetchone()
-    conn.close()
-    if not conversation or not conversation['image_name']:
-        flash("No chat history to restore.")
+def restore_chat():
+    if request.method == 'POST':
+        decrypt_option = request.form.get('decrypt_option')
+        key = request.form.get('key')
+        image_file = request.files.get('image_file')
+
+        if not image_file:
+            flash("No image file provided.")
+            return redirect(url_for('chat'))
+
+        # Save the uploaded image temporarily
+        image_filename = secure_filename(image_file.filename)
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_filename)
+        image_file.save(image_path)
+
+        try:
+            # Extract hidden content using steganography
+            hidden_content = lsb.reveal(image_path)
+            if not hidden_content:
+                flash("No hidden content found in the image.")
+                os.remove(image_path)
+                return redirect(url_for('chat'))
+
+            # Decrypt if necessary
+            if decrypt_option == 'encrypted':
+                if not key:
+                    flash("Decryption key is required.")
+                    os.remove(image_path)
+                    return redirect(url_for('chat'))
+                # Decode from base64 and decrypt
+                encrypted_content = base64.b64decode(hidden_content)
+                restored_chat_content = decrypt(encrypted_content, key.encode('utf-8'))
+            else:
+                restored_chat_content = hidden_content
+
+            # Process the restored chat content
+            messages = restored_chat_content.split("\n")
+            # Check if the restored conversation includes the current user
+            conversation_users = extract_users_from_messages(messages)
+            if current_user.username in conversation_users:
+                # Check if a conversation with these users exists
+                conversation_id = find_conversation_with_users(conversation_users)
+                if not conversation_id:
+                    # Create a new conversation
+                    conversation_id = create_new_conversation(conversation_users)
+            else:
+                # Create a new conversation
+                conversation_id = create_new_conversation(conversation_users)
+
+            # Insert messages into the database
+            conn = get_db_connection()
+            for message_text in messages:
+                # Assuming messages are in "username: message" format
+                sender_username, text = parse_message(message_text)
+                sender = conn.execute('SELECT id FROM users WHERE username = ?', (sender_username,)).fetchone()
+                if sender:
+                    sender_id = sender['id']
+                else:
+                    sender_id = current_user.id  # Default to current user
+                conn.execute('''
+                    INSERT INTO messages (conversation_id, sender_id, message_text, timestamp)
+                    VALUES (?, ?, ?, ?)
+                ''', (
+                    conversation_id,
+                    sender_id,
+                    text,
+                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                ))
+            conn.commit()
+            conn.close()
+            flash("Conversation restored successfully.")
+        except Exception as e:
+            flash("Failed to restore conversation.")
+        finally:
+            os.remove(image_path)  # Clean up the uploaded image
         return redirect(url_for('chat', conversation_id=conversation_id))
-    # Path to the saved image with the chat data
-    image_path = os.path.join(app.config['UPLOAD_FOLDER'], conversation['image_name'])
-    try:
-        # Decode the hidden chat content from the image
-        restored_chat_content = lsb.reveal(image_path)
-        if not restored_chat_content:
-            flash("Failed to restore chat.")
-            return redirect(url_for('chat', conversation_id=conversation_id))
-        # Reinsert the restored messages into the database
-        messages = restored_chat_content.split("\n")
-        conn = get_db_connection()
-        for message_text in messages:
-            conn.execute('''
-                INSERT INTO messages (conversation_id, sender_id, message_text, timestamp)
-                VALUES (?, ?, ?, ?)
-            ''', (conversation_id, current_user.id, message_text, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        conn.close()
-        flash("Chat restored.")
-    except Exception as e:
-        flash("Failed to restore chat.")
-    return redirect(url_for('chat', conversation_id=conversation_id))
+    else:
+        return redirect(url_for('chat'))
 
 @app.route('/about', methods=['GET', 'POST'])
 def about():

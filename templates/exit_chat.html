@@ -1,0 +1,23 @@
+<!-- exit_chat.html -->
+<form method="post">
+    <p>Do you want to encrypt and exit or exit without encryption?</p>
+    <button name="option" value="encrypt">Encrypt and Exit</button>
+    <button name="option" value="plain">Plain and Exit</button>
+    <submit onclick="exitChat"><a href="{{ url_for('exit_chat')}}">Exit Chat</a></submit>
+</form>
+<script>
+    function exitChat(conversationId) {
+        $.ajax({
+            url: "{{ url_for('exit_chat', conversation_id=conversationId) }}",
+            type: "POST",
+            success: function() {
+                $('#main-chat').html('<p>Select a conversation to start chatting.</p>');
+                $('.chat-input').css('display', 'none');
+            },
+            error: function() {
+                alert('Failed to exit conversation.');
+            }
+        });
+    }
+</script>
+<!-- {% endblock %} -->

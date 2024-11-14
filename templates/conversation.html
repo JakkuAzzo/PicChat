@@ -1,16 +1,24 @@
 {% if messages %}
     <div class="chat-header">
         <h2>Chat with {{ messages[0].sender_username }}</h2>
-        <a href="{{ url_for('exit_chat', conversation_id=conversation_id) }}" class="exit-chat-button">Exit Chat</a>
+        <form action="{{ url_for('exit_chat', conversation_id=conversation_id) }}" method="post">
+            <button type="submit">Exit Chat</button>
+        </form>
     </div>
     <div class="chat-messages" id="chat-messages">
-        {% for message in messages %}
-            <div class="chat-message {% if message.sender_id == current_user.id %}you{% else %}other{% endif %}">
-                <p>{{ message.message_text }}</p>
-                <div class="message-info">{{ message.sender_username }} - {{ message.timestamp }}</div>
+    {% for message in messages %}
+        <div class="chat-message {% if message.sender_id == current_user.id %}you{% else %}other{% endif %}">
+            <p>{{ message.message_text }}</p>
+            <div class="message-info">
+                {% if message.sender_id == current_user.id %}
+                    You - {{ message.timestamp }}
+                {% else %}
+                    {{ message.sender_username }} - {{ message.timestamp }}
+                {% endif %}
             </div>
-        {% endfor %}
-    </div>
+        </div>
+    {% endfor %}
+</div>
 {% else %}
     <p id="no-messages" style="display:block;">No messages in this conversation.</p>
     <button id="start-messaging-button" onclick="startMessaging()" style="display:block;">Click to start messaging with this user</button>

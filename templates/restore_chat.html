@@ -1,16 +1,23 @@
 <!-- templates/restore_chat.html -->
-
-{% extends 'base.html' %}
-
-{% block title %}Restore Chat{% endblock %}
-
-{% block content %}
-<h2>Restore Previous Chat?</h2>
-<form action="" method="post">
-    <!-- {{ csrf_token() }} -->
-    <label for="choice">Do you want to restore the previous chat?</label><br>
-    <input type="radio" name="choice" value="yes" required> Yes<br>
-    <input type="radio" name="choice" value="no" required> No<br><br>
-    <button type="submit">Continue</button>
+<form method="post">
+    <p>Was the chat encrypted?</p>
+    <input type="radio" name="decrypt_option" value="encrypted" required> Yes (Provide key)<br>
+    <input type="radio" name="decrypt_option" value="plain" required> No<br>
+    <div id="key-input" style="display:none;">
+        <label for="key">Enter Decryption Key:</label>
+        <input type="text" name="key" id="key">
+    </div>
+    <button type="submit">Restore Chat</button>
 </form>
-{% endblock %}
+<script>
+    // Show key input if 'encrypted' is selected
+    document.getElementsByName('decrypt_option').forEach(function(elem) {
+        elem.addEventListener('change', function() {
+            if (this.value === 'encrypted') {
+                document.getElementById('key-input').style.display = 'block';
+            } else {
+                document.getElementById('key-input').style.display = 'none';
+            }
+        });
+    });
+</script>

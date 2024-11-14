@@ -15,6 +15,24 @@
             </div>
         </div>
         <ul class="conversations-list">
+            <!-- Restore chat from image button -->
+            <button onclick="showRestoreDialog()">Restore Conversation from Image</button>
+
+            <!-- Restore Conversation Dialog -->
+            <div id="restore-dialog" style="display: none;">
+                <form id="restore-form" action="{{ url_for('restore_chat') }}" method="post" enctype="multipart/form-data">
+                    <input type="file" name="image_file" accept="image/png, image/jpeg" required>
+                    <p>Was the conversation encrypted?</p>
+                    <input type="radio" name="decrypt_option" value="encrypted" required> Yes (Provide key)<br>
+                    <input type="radio" name="decrypt_option" value="plain" required> No<br>
+                    <div id="key-input" style="display: none;">
+                        <label for="key">Enter Decryption Key:</label>
+                        <input type="text" name="key" id="key">
+                    </div>
+                    <button type="submit">Restore</button>
+                    <button type="button" onclick="hideRestoreDialog()">Cancel</button>
+                </form>
+            </div>
             {% if conversations %}
                 {% for convo in conversations %}
                     <li>
@@ -44,84 +62,143 @@
 
 {% block scripts %}
 <script>
-    function toggleSidebar(side) {
-        const leftSidebar = document.getElementById('sidebar-left');
-        if (side === 'left') {
-            leftSidebar.classList.toggle('collapsed');
-        }
+    function showRestoreDialog() {
+        document.getElementById('restore-dialog').style.display = 'block';
     }
 
-    function toggleSearch() {
-        const searchContainer = document.getElementById('search-container');
-        searchContainer.style.display = searchContainer.style.display === 'none' ? 'block' : 'none';
+    function hideRestoreDialog() {
+        document.getElementById('restore-dialog').style.display = 'none';
     }
 
-    function searchUsers() {
-        const query = document.getElementById('search-input').value;
-        if (query.length > 1) {
-            fetch('{{ url_for("search_users") }}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ search_query: query })
-            }).then(response => response.json()).then(data => {
-                const results = document.getElementById('search-results');
-                results.innerHTML = '';
-                data.usernames.forEach(username => {
-                    const div = document.createElement('div');
-                    div.textContent = username;
-                    div.onclick = () => startConversation(username);
-                    results.appendChild(div);
+    // Show key input if 'encrypted' is selected
+    document.querySelectorAll('input[name="decrypt_option"]').forEach(function(elem) {
+        elem.addEventListener('change', function() {
+            if (this.value === 'encrypted') {
+                document.getElementById('key-input').style.display = 'block';
+            } else {
+                document.getElementById('key-input').style.display = 'none';
+            }
+        });
+    });
+
+    $(document).ready(function() {
+        // Function to bind the message form event handler
+        function bindMessageForm() {
+            $('#message-form').on('submit', function(event) {
+                event.preventDefault();
+                $.ajax({
+                    url: $(this).attr('action'),
+                    method: $(this).attr('method'),
+                    data: $(this).serialize(),
+                    dataType: 'html',
+                    success: function(response) {
+                        $('#chat-messages').html(response);
+                        $('#message-form')[0].reset();
+                        // Scroll to the bottom of the chat messages
+                        const chatMessages = $('#chat-messages')[0];
+                        if (chatMessages) {
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        }
+                    },
+                    error: function() {
+                        alert('Error sending message.');
+                    }
                 });
             });
         }
-    }
 
-    function startConversation(username) {
-        fetch('{{ url_for("start_conversation") }}', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contact: username })
-        }).then(response => {
-            if (response.ok) {
-                window.location.reload();
-            } else {
-                alert('Failed to start conversation.');
-            }
-        });
-    }
-
-    function loadConversation(conversationId) {
-    $.ajax({
-        url: "{{ url_for('chat') }}",
-        type: "GET",
-        data: { conversation_id: conversationId },
-        success: function(response) {
-            console.log(response); // Log the response to check its content
-            $('#main-chat').html(response);
-            document.querySelector('.chat-input').style.display = 'block';
-        },
-        error: function() {
-            alert('Failed to load conversation.');
-        }
-    });
-}
-
-    $(document).ready(function() {
-        $('#message-form').on('submit', function(event) {
-            event.preventDefault(); // Prevent default form submission
+        // Function to load a conversation
+        function loadConversation(conversationId) {
             $.ajax({
-                url: $(this).attr('action'),
-                type: $(this).attr('method'),
-                data: $(this).serialize(),
+                url: "{{ url_for('chat') }}",
+                type: "GET",
+                data: { conversation_id: conversationId },
+                dataType: 'html',
                 success: function(response) {
-                    loadConversation($('input[name="conversation_id"]').val()); // Reload the conversation
-                    $('#message-form')[0].reset(); // Reset the form
+                    $('#main-chat').html(response);
+                    // Scroll to the bottom of the chat messages
+                    const chatMessages = $('#chat-messages')[0];
+                    if (chatMessages) {
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    }
+                    // Bind the message form event handler
+                    bindMessageForm();
+                    // Show the chat input
+                    $('.chat-input').css('display', 'block');
                 },
                 error: function() {
-                    alert('Failed to send message.');
+                    alert('Failed to load conversation.');
                 }
             });
-        });
+        }
+
+        // Function to toggle the sidebar
+        function toggleSidebar(side) {
+            const leftSidebar = document.getElementById('sidebar-left');
+            if (side === 'left') {
+                leftSidebar.classList.toggle('collapsed');
+            }
+        }
+
+        // Function to toggle the search input
+        function toggleSearch() {
+            const searchContainer = document.getElementById('search-container');
+            if (searchContainer.style.display === 'none' || searchContainer.style.display === '') {
+                searchContainer.style.display = 'block';
+            } else {
+                searchContainer.style.display = 'none';
+            }
+        }
+
+        // Function to search for users
+        function searchUsers() {
+            const query = $('#search-input').val();
+            if (query.length > 0) {
+                $.ajax({
+                    url: "{{ url_for('search_users') }}",
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ query: query }),
+                    success: function(response) {
+                        let resultsHtml = '';
+                        response.results.forEach(function(user) {
+                            resultsHtml += '<div><a href="javascript:void(0);" onclick="startConversation(' + user.id + ')">' + user.username + '</a></div>';
+                        });
+                        $('#search-results').html(resultsHtml);
+                    },
+                    error: function() {
+                        $('#search-results').html('<div>Error searching users.</div>');
+                    }
+                });
+            } else {
+                $('#search-results').html('');
+            }
+        }
+
+        // Function to start a conversation
+        function startConversation(userId) {
+            $.ajax({
+                url: "{{ url_for('start_conversation') }}",
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ contact_id: userId }),
+                success: function(response) {
+                    loadConversation(response.conversation_id);
+                },
+                error: function() {
+                    alert('Failed to start conversation.');
+                }
+            });
+        }
+
+        // Expose functions to the global scope
+        window.showRestoreDialog = showRestoreDialog;
+        window.hideRestoreDialog = hideRestoreDialog;
+        window.toggleSidebar = toggleSidebar;
+        window.toggleSearch = toggleSearch;
+        window.searchUsers = searchUsers;
+        window.startConversation = startConversation;
+        window.loadConversation = loadConversation;
     });
 </script>
 {% endblock %}

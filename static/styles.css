@@ -62,7 +62,7 @@ nav ul li a:hover {
 
 /* Left Sidebar - Conversations */
 .sidebar-left {
-    width: 300px;
+    width: 400px;
     background-color: #ffffff;
     border-right: 1px solid #ddd;
     transition: transform 0.3s ease;
@@ -70,6 +70,7 @@ nav ul li a:hover {
 }
 
 .sidebar-left.collapsed {
+    width:0;
     transform: translateX(-100%);
 }
 
@@ -124,6 +125,7 @@ nav ul li a:hover {
 /* Main Chat Area */
 .main-chat {
     flex-grow: 1;
+    transition:all 0.3s ease;
     background-color: #e5ddd5;
     display: flex;
     flex-direction: column;

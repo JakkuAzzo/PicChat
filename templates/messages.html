@@ -1,5 +1,4 @@
 <!-- templates/messages.html -->
-<!-- {{ csrf_token() }} -->
 {% for message in messages %}
     {% if message['sender_id'] == current_user.id %}
         <div class="chat-message you">
@@ -9,7 +8,7 @@
     {% else %}
         <div class="chat-message other">
             <p>{{ message['message_text'] }}</p>
-            <div class="message-info">{{ contact }} - {{ message['timestamp'] }}</div>
+            <div class="message-info">{{ message['sender_username'] }} - {{ message['timestamp'] }}</div>
         </div>
     {% endif %}
 {% endfor %}
