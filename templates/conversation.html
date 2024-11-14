@@ -1,6 +1,6 @@
 {% if messages %}
     <div class="chat-header">
-        <h2>Chat with {{ messages[0].sender_username }}</h2>
+        <h2>Chat with {{ contact_username }}</h2>
         <form action="{{ url_for('exit_chat', conversation_id=conversation_id) }}" method="post">
             <button type="submit">Exit Chat</button>
         </form>

@@ -3,9 +3,13 @@
     <p>Do you want to encrypt and exit or exit without encryption?</p>
     <button name="option" value="encrypt">Encrypt and Exit</button>
     <button name="option" value="plain">Plain and Exit</button>
-    <submit onclick="exitChat"><a href="{{ url_for('exit_chat')}}">Exit Chat</a></submit>
+    <button type="button" onclick="cancelExit()">Cancel</button>
 </form>
 <script>
+    function cancelExit() {
+        window.location.href = "{{ url_for('chat', conversation_id=conversation_id) }}";
+    }
+    
     function exitChat(conversationId) {
         $.ajax({
             url: "{{ url_for('exit_chat', conversation_id=conversationId) }}",

@@ -169,8 +169,10 @@ def chat():
         WHERE c.user1_id = ? OR c.user2_id = ?
         ORDER BY c.last_message_time DESC
     ''', (current_user.id, current_user.id, current_user.id)).fetchall()
+    
     # Fetch messages if a conversation_id is provided
     messages = None
+    contact_username = None
     if conversation_id:
         messages = conn.execute('''
             SELECT m.*, u.username AS sender_username
@@ -179,10 +181,21 @@ def chat():
             WHERE m.conversation_id = ?
             ORDER BY m.timestamp ASC
         ''', (conversation_id,)).fetchall()
+        
+        # Fetch the contact username
+        contact = conn.execute('''
+            SELECT u.username AS contact_username
+            FROM conversations c
+            JOIN users u ON (u.id = CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END)
+            WHERE c.id = ?
+        ''', (current_user.id, conversation_id)).fetchone()
+        if contact:
+            contact_username = contact['contact_username']
+    
     conn.close()
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return render_template('conversation.html', messages=messages, conversation_id=conversation_id)
-    return render_template('chat.html', conversations=conversations, messages=messages, selected_conversation=conversation_id)
+        return render_template('conversation.html', messages=messages, conversation_id=conversation_id, contact_username=contact_username)
+    return render_template('chat.html', conversations=conversations, messages=messages, selected_conversation=conversation_id, contact_username=contact_username)
 
 @app.route('/send_message', methods=['POST'])
 @login_required
@@ -244,17 +257,16 @@ def exit_chat(conversation_id):
                 # Encode the encrypted content to base64 to store as text
                 hidden_content = base64.b64encode(encrypted_content).decode('utf-8')
                 
-                # In the exit_chat route after encryption
+                # Save the key to a file
                 key_filename = f'key_{conversation_id}.key'
                 key_path = os.path.join(app.config['UPLOAD_FOLDER'], key_filename)
                 with open(key_path, 'wb') as key_file:
                     key_file.write(key)
-                # Provide the key file to the user
                 flash("Chat encrypted and saved. Please download your decryption key.")
             else:
                 hidden_content = chat_content
                 flash("Chat saved without encryption.")
-
+            
             # Hide the content in an image using steganography
             images_dir = '/workspaces/PicChat/images'
             image_files = [
@@ -291,7 +303,7 @@ def exit_chat(conversation_id):
                 # Provide the key file to the user
                 return send_file(key_path, as_attachment=True)
             else:
-                return redirect(url_for('chat'))
+                return send_file(image_path, as_attachment=True)
         else:
             flash("Conversation not found.")
             return redirect(url_for('chat'))
