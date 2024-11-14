@@ -268,7 +268,7 @@ def exit_chat(conversation_id):
                 flash("Chat saved without encryption.")
             
             # Hide the content in an image using steganography
-            images_dir = '/workspaces/PicChat/images'
+            images_dir = 'images'
             image_files = [
                 f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))
             ]
