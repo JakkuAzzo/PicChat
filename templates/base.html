@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <!-- Include jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Include Socket.IO -->
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
 </head>
 <body>
     <nav>
@@ -15,22 +17,39 @@
             <li><a href="{{ url_for('about') }}">About</a></li>
             {% if current_user.is_authenticated %}
                 <li><a href="{{ url_for('logout') }}">Logout</a></li>
+                <li class="username">{{ current_user.username }}</li>
+                {% if selected_conversation %}
+                    <li><a href="#" onclick="showExitChatForm({{ selected_conversation }})">Exit Chat</a></li>
+                {% endif %}
             {% else %}
                 <li><a href="{{ url_for('login') }}">Login</a></li>
             {% endif %}
-            <li class="username">{{ current_user.username }}</li>
         </ul>
     </nav>
     {% with messages = get_flashed_messages() %}
       {% if messages %}
-        <div class="flash-messages">
+        <div id="flash-messages" class="flash-messages">
           {% for message in messages %}
-            <p>{{ message }}</p>
+            <div class="flash">{{ message }}</div>
           {% endfor %}
         </div>
       {% endif %}
     {% endwith %}
     {% block content %}{% endblock %}
+    {% if selected_conversation %}
+    <div id="exit-chat-form" class="overlay">
+        <div class="popup">
+            <h2>Exit Chat</h2>
+            <a class="close" href="#" onclick="hideExitChatForm()">&times;</a>
+            <form action="{{ url_for('exit_chat', conversation_id=selected_conversation) }}" method="post">
+                <p>Do you want to encrypt and exit or exit without encryption?</p>
+                <button name="option" value="encrypt">Encrypt and Exit</button>
+                <button name="option" value="plain">Plain and Exit</button>
+                <button type="button" onclick="hideExitChatForm()">Cancel</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         setTimeout(function() {
@@ -44,7 +63,37 @@
             }
         }, 5000);
       });
+
+      function showExitChatForm(conversationId) {
+            document.getElementById('exit-chat-form').style.display = 'block';
+        }
+
+        function hideExitChatForm() {
+            document.getElementById('exit-chat-form').style.display = 'none';
+        }
+
+        // Initialize Socket.IO
+        const socket = io();
+
+        // Join the conversation room
+        const conversationId = {{ selected_conversation }};
+        socket.emit('join', { conversation_id: conversationId });
+
+        // Listen for new messages
+        socket.on('new_message', function(data) {
+            if (data.conversation_id == conversationId) {
+                $('#chat-messages').html(data.html);
+                const chatMessages = $('#chat-messages')[0];
+                if (chatMessages) {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            }
+        });
+
+        // Leave the conversation room when the user navigates away
+        window.addEventListener('beforeunload', function() {
+            socket.emit('leave', { conversation_id: conversationId });
+        });
     </script>
-    {% block scripts %}{% endblock %}
 </body>
 </html>

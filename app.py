@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, send_file, make_response
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import sqlite3
 import os
 import datetime
@@ -25,6 +26,7 @@ app.config['WTF_CSRF_CHECK_DEFAULT'] = False
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+socketio = SocketIO(app)
 
 DATABASE = 'picchat.db'
 IMAGES_FOLDER = 'images'
@@ -172,7 +174,7 @@ def chat():
     ''', (current_user.id, current_user.id, current_user.id)).fetchall()
     
     # Fetch messages if a conversation_id is provided
-    messages = None
+    messages = []
     contact_username = None
     if conversation_id:
         messages = conn.execute('''
@@ -226,8 +228,22 @@ def send_message():
     # Render the messages partial template
     rendered = render_template('messages.html', messages=messages)
     response = make_response(rendered)
+    
+    # Emit the new message to the room
+    socketio.emit('new_message', {'conversation_id': conversation_id, 'html': rendered}, room=conversation_id)
+    
     return response
 
+@socketio.on('join')
+def on_join(data):
+    conversation_id = data['conversation_id']
+    join_room(conversation_id)
+
+@socketio.on('leave')
+def on_leave(data):
+    conversation_id = data['conversation_id']
+    leave_room(conversation_id)
+    
 @app.route('/exit_chat/<int:conversation_id>', methods=['POST'])
 @login_required
 def exit_chat(conversation_id):
@@ -306,7 +322,7 @@ def exit_chat(conversation_id):
             conn.close()
             
             if option == 'encrypt':
-                # Provide the key file and the image to the user
+                # Provide the key file and t he image to the user
                 return send_file(image_path, as_attachment=True)
             else:
                 return send_file(image_path, as_attachment=True)
