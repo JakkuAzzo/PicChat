@@ -40,16 +40,17 @@
     <div id="exit-chat-form" class="overlay">
         <div class="popup">
             <h2>Exit Chat</h2>
-            <a class="close" href="#" onclick="hideExitChatForm()">&times;</a>
+            <a class="close" href="#" onclick="toggleExitChatForm()" style="display: none;">&times;</a>
             <form action="{{ url_for('exit_chat', conversation_id=selected_conversation) }}" method="post">
                 <p>Do you want to encrypt and exit or exit without encryption?</p>
                 <button name="option" value="encrypt">Encrypt and Exit</button>
                 <button name="option" value="plain">Plain and Exit</button>
-                <button type="button" onclick="hideExitChatForm()">Cancel</button>
+                <button type="button" onclick="toggleExitChatForm">Cancel</button>
             </form>
         </div>
     </div>
     {% endif %}
+    {% block scripts %}{% endblock %}
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         setTimeout(function() {
@@ -64,36 +65,35 @@
         }, 5000);
       });
 
-      function showExitChatForm(conversationId) {
-            document.getElementById('exit-chat-form').style.display = 'block';
+      function toggleExitChatForm() {
+        const exitChatForm = document.getElementById('exit-chat-form');
+        if (exitChatForm.style.display === 'block') {
+            exitChatForm.style.display = 'none';
+        } else {
+            exitChatForm.style.display = 'block';
         }
+      }
 
-        function hideExitChatForm() {
-            document.getElementById('exit-chat-form').style.display = 'none';
-        }
+      // Initialize Socket.IO
+      const socket = io();
+      // Join the conversation room
+      const conversationId = "{{ selected_conversation }}";
+      socket.emit('join', { conversation_id: conversationId });
+      // Listen for new messages
+      socket.on('new_message', function(data) {
+          if (data.conversation_id == conversationId) {
+              $('#chat-messages').html(data.html);
+              const chatMessages = $('#chat-messages')[0];
+              if (chatMessages) {
+                  chatMessages.scrollTop = chatMessages.scrollHeight;
+              }
+          }
+      });
 
-        // Initialize Socket.IO
-        const socket = io();
-
-        // Join the conversation room
-        const conversationId = {{ selected_conversation }};
-        socket.emit('join', { conversation_id: conversationId });
-
-        // Listen for new messages
-        socket.on('new_message', function(data) {
-            if (data.conversation_id == conversationId) {
-                $('#chat-messages').html(data.html);
-                const chatMessages = $('#chat-messages')[0];
-                if (chatMessages) {
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
-            }
-        });
-
-        // Leave the conversation room when the user navigates away
-        window.addEventListener('beforeunload', function() {
-            socket.emit('leave', { conversation_id: conversationId });
-        });
+      // Leave the conversation room when the user navigates away
+      window.addEventListener('beforeunload', function() {
+          socket.emit('leave', { conversation_id: conversationId });
+      });
     </script>
 </body>
 </html>

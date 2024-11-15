@@ -412,27 +412,30 @@ def create_new_conversation(users):
 def start_conversation():
     data = request.get_json()
     app.logger.info(f"Request data: {data}")
-    user2_username = data.get('username')
-    if not user2_username:
-        app.logger.warning("No username provided in the request.")
-        return jsonify({'error': 'No username provided'}), 400
-
-    app.logger.info(f"Starting conversation with user: {user2_username}")
+    contact_id = data.get('contact_id')
+    if not contact_id:
+        app.logger.warning("No contact ID provided in the request.")
+        return jsonify({'error': 'No contact ID provided'}), 400
+    app.logger.info(f"Starting conversation with user ID: {contact_id}")
     conn = get_db_connection()
-    user2 = conn.execute('SELECT id FROM users WHERE username = ?', (user2_username,)).fetchone()
+    user2 = conn.execute('SELECT id FROM users WHERE id = ?', (contact_id,)).fetchone()
     if user2:
         user1_id = current_user.id
         user2_id = user2['id']
         conn.execute('''
             INSERT INTO conversations (user1_id, user2_id, created_at)
             VALUES (?, ?, ?)
-        ''', (user1_id, user2_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        ''', (
+            user1_id,
+            user2_id,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
         conn.commit()
         conversation_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
         conn.close()
         return jsonify({'conversation_id': conversation_id})
     else:
-        app.logger.warning(f"User not found: {user2_username}")
+        app.logger.warning(f"User not found with ID: {contact_id}")
         conn.close()
         return jsonify({'error': 'User not found'}), 404
 

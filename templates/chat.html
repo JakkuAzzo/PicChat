@@ -58,7 +58,6 @@
         <div class="chat-header">
             <button class="menu-button" onclick="toggleSidebar('left')">&#9776;</button>
             <h2>Welcome, {{ session['username'] }}</h2>
-            <p>Select a conversation to start chatting.</p>
             <button class="menu-button" onclick="toggleSidebar('right')">&#9776;</button>
         </div>
         <div class="chat-messages" id="chat-messages">
@@ -77,12 +76,31 @@
 {% endblock %}
 {% block scripts %}
 <script>
-    function showRestoreDialog() {
-        document.getElementById('restore-dialog').style.display = 'block';
+    // Function to toggle the sidebar
+    function toggleSidebar(side) {
+        const sidebar = document.getElementById(`sidebar-${side}`);
+        sidebar.classList.toggle('collapsed');
     }
+
+    // Function to toggle the search container
+    function toggleSearch() {
+        const searchContainer = document.getElementById('search-container');
+        if (searchContainer.style.display === 'none') {
+            searchContainer.style.display = 'block';
+        } else {
+            searchContainer.style.display = 'none';
+        }
+    }
+
+    function showRestoreDialog() {
+    const restoreDialog = document.getElementById('restore-dialog');
+    restoreDialog.style.display = 'block';
+    }
+
     function hideRestoreDialog() {
         document.getElementById('restore-dialog').style.display = 'none';
     }
+
     // Show key input if 'encrypted' is selected
     document.querySelectorAll('input[name="decrypt_option"]').forEach(function(elem) {
         elem.addEventListener('change', function() {
@@ -93,6 +111,17 @@
             }
         });
     });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Attach event listener to sidebar toggle buttons
+        document.querySelectorAll('.collapse-button').forEach(function(button) {
+            button.addEventListener('click', function() {
+                const side = this.getAttribute('data-side');
+                toggleSidebar(side);
+            });
+        });
+    });
+
     $(document).ready(function() {
         // Function to bind the message form event handler
         function bindMessageForm() {
@@ -106,6 +135,7 @@
                     success: function(response) {
                         $('#chat-messages').html(response);
                         $('#message-form')[0].reset();
+                        document.getElementsByClassName('chat-input')[0].style.display = 'block';
                         // Scroll to the bottom of the chat messages
                         const chatMessages = $('#chat-messages')[0];
                         if (chatMessages) {
@@ -118,6 +148,7 @@
                 });
             });
         }
+
         // Function to load a conversation
         function loadConversation(conversationId) {
             $.ajax({
@@ -135,27 +166,14 @@
                     // Bind the message form event handler
                     bindMessageForm();
                     // Show the chat input
-                    $('.chat-input').css('display', 'block');
+                    document.getElementsByClassName('chat-input')[0].style.display = 'block';
                 },
                 error: function() {
                     alert('Failed to load conversation.');
                 }
             });
         }
-        // Function to toggle the sidebar
-        function toggleSidebar(side) {
-            const sidebar = document.getElementById(`sidebar-${side}`);
-            sidebar.classList.toggle('collapsed');
-        }
-        // Function to toggle the search input
-        function toggleSearch() {
-            const searchContainer = document.getElementById('search-container');
-            if (searchContainer.style.display === 'none') {
-                searchContainer.style.display = 'block';
-            } else {
-                searchContainer.style.display = 'none';
-            }
-        }
+
         // Function to search users
         function searchUsers() {
             const query = document.getElementById('search-input').value;
@@ -192,11 +210,13 @@
                 success: function(response) {
                     loadConversation(response.conversation_id);
                 },
+                document.getElementsByClassName('chat-input')[0].style.display = 'block';
                 error: function() {
                     alert('Failed to start conversation.');
                 }
             });
         }
+    
         // Expose functions to the global scope
         window.showRestoreDialog = showRestoreDialog;
         window.hideRestoreDialog = hideRestoreDialog;
