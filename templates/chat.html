@@ -27,7 +27,7 @@
                     <a href="{{ url_for('chat', conversation_id=convo['id']) }}">{{ convo['contact_username'] }}</a>
                     <span>{{ convo['last_message_time'] }}</span>
                     <div class="conversation-actions">
-                        <a href="{{ url_for('download_conversation', conversation_id=convo['id']) }}">Download</a>
+                        <a href="javascript:void(0);" onclick="showDownloadForm()">Download</a>
                         <form action="{{ url_for('delete_conversation', conversation_id=convo['id']) }}" method="post" style="display:inline;">
                             <button type="submit">Delete</button>
                         </form>
@@ -43,6 +43,13 @@
         <div class="chat-header">
             <button class="menu-button" onclick="toggleSidebar('left')">&#9776;</button>
             <h2>Welcome, {{ session['username'] }}</h2>
+            {% if selected_conversation %}
+             <form id="download-form" method="post" action="{{ url_for('download_conversation', conversation_id=selected_conversation) }}" style="display:none;">
+                <p>Do you want to encrypt and download or download without encryption?</p>
+                <button name="option" value="encrypt">Encrypt and Download</button>
+                <button name="option" value="plain">Plain Download</button>
+                <button type="button" onclick="cancelDownload()">Cancel</button>
+            </form>
             <button class="menu-button" onclick="toggleSidebar('right')">&#9776;</button>
             {% include 'exit_chat.html' %}
         </div>
@@ -51,7 +58,16 @@
         </div>
         {% if not selected_conversation %}
             <div class="chat-input" style="display:none;">
-        {% else %}
+        {% endif %}
+        {% if selected_conversation %}
+            <script>
+                function showDownloadForm() {
+                    document.getElementById('download-form').style.display = 'block';
+                }
+                function cancelDownload() {
+                    document.getElementById('download-form').style.display = 'none';
+                }
+            </script>
             <div class="chat-input" style="display:block;">
                 <form id="message-form" action="{{ url_for('send_message') }}" method="post">
                     <!-- {{ csrf_token() }} -->

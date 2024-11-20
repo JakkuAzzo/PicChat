@@ -218,17 +218,18 @@ def send_message():
         WHERE id = ?
     ''', (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), conversation_id))
     conn.commit()
-    # Fetch updated messages
-    messages = conn.execute('''
+    
+    # Fetch the newly added message
+    message = conn.execute('''
         SELECT m.*, u.username AS sender_username
         FROM messages m
         JOIN users u ON m.sender_id = u.id
-        WHERE m.conversation_id = ?
-        ORDER BY m.timestamp ASC
-    ''', (conversation_id,)).fetchall()
+        WHERE m.conversation_id = ? AND m.timestamp = ?
+    ''', (conversation_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))).fetchone()
     conn.close()
-    # Render the messages partial template
-    rendered = render_template('messages.html', messages=messages)
+    
+    # Render the single message partial template
+    rendered = render_template('single_message.html', message=message)
     response = make_response(rendered)
     response.headers['Content-Type'] = 'text/html'
     
@@ -426,9 +427,10 @@ def start_conversation():
         conn.close()
         return jsonify({'error': 'User not found'}), 404
 
-@app.route('/download_conversation/<int:conversation_id>', methods=['GET'])
+@app.route('/download_conversation/<int:conversation_id>', methods=['POST'])
 @login_required
 def download_conversation(conversation_id):
+    option = request.form.get('option')
     conn = get_db_connection()
     conversation = conn.execute('SELECT * FROM conversations WHERE id = ?', (conversation_id,)).fetchone()
     if conversation:
@@ -451,12 +453,34 @@ def download_conversation(conversation_id):
         if image.mode != 'RGB':
             image = image.convert('RGB')
         
-        # Save the steganographed image
-        image_name = f"chat_{conversation_id}.png"
-        image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_name)
-        lsb.hide(image, chat_content).save(image_path)
-        
-        return send_file(image_path, as_attachment=True)
+        if option == 'encrypt':
+            key = get_random_bytes(32)  # 32 bytes for AES-256
+            encrypted_content = encrypt(chat_content, key)
+            hidden_content = base64.b64encode(encrypted_content).decode('utf-8')
+            
+            key_filename = f'key_{conversation_id}.key'
+            key_path = os.path.join(app.config['UPLOAD_FOLDER'], key_filename)
+            with open(key_path, 'wb') as key_file:
+                key_file.write(key)
+            
+            image_name = f"chat_{conversation_id}.png"
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_name)
+            lsb.hide(image, hidden_content).save(image_path)
+            
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                zip_file.write(image_path, os.path.basename(image_path))
+                zip_file.write(key_path, os.path.basename(key_path))
+            zip_buffer.seek(0)
+            
+            return send_file(zip_buffer, as_attachment=True, download_name=f'chat_{conversation_id}.zip')
+        else:
+            hidden_content = chat_content
+            image_name = f"chat_{conversation_id}.png"
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_name)
+            lsb.hide(image, hidden_content).save(image_path)
+            
+            return send_file(image_path, as_attachment=True)
     else:
         flash("Conversation not found.")
         return redirect(url_for('chat'))
