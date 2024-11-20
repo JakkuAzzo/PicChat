@@ -1,23 +1,31 @@
 <!-- exit_chat.html -->
-{% extends 'chat.html' %}
-<form method="post">
+{% if selected_conversation %}
+<form id='exit-chat-form' style='display:none;' method="post" action="{{ url_for('exit_chat', conversation_id=selected_conversation) }}">
     <p>Do you want to encrypt and exit or exit without encryption?</p>
     <button name="option" value="encrypt">Encrypt and Exit</button>
     <button name="option" value="plain">Plain and Exit</button>
     <button type="button" onclick="cancelExit()">Cancel</button>
 </form>
+{% endif %}
+{% block scripts %}
 <script>
     function cancelExit() {
         document.getElementById('exit-chat-form').style.display = 'none';
     }
     
-    function exitChat(conversationId) {
+    function exitChat() {
+        const conversationId = document.getElementById('exit-chat-form').dataset.conversationId;
+        if (!conversationId) {
+            alert('Conversation ID is missing.');
+            return;
+        }
         $.ajax({
-            url: "{{ url_for('exit_chat', conversation_id=conversationId) }}",
+            url: `/exit_chat/${conversationId}`,
             type: "POST",
             success: function() {
                 $('#main-chat').html('<p>Select a conversation to start chatting.</p>');
                 $('.chat-input').css('display', 'none');
+                cancelExit();
             },
             error: function() {
                 alert('Failed to exit conversation.');
@@ -25,3 +33,4 @@
         });
     }
 </script>
+{% endblock %}

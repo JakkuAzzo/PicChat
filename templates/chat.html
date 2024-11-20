@@ -1,4 +1,4 @@
-<!-- templates/chat.html -->
+<!-- chat.html -->
 {% extends 'base.html' %}
 {% block title %}PicChat - Chat{% endblock %}
 {% block content %}
@@ -14,42 +14,27 @@
                 <div id="search-results"></div>
             </div>
         </div>
-        <ul class="conversations-list">
-            <!-- Restore chat from image button -->
-            <button onclick="showRestoreDialog()">Restore Conversation from Image</button>
-            <!-- Restore Conversation Dialog -->
-            <div id="restore-dialog" style="display: none;">
-                <form id="restore-form" action="{{ url_for('restore_chat') }}" method="post" enctype="multipart/form-data">
-                    <input type="file" name="image_file" required>
-                    <div>
-                        <label><input type="radio" name="decrypt_option" value="plain" checked> Plain</label>
-                        <label><input type="radio" name="decrypt_option" value="encrypted"> Encrypted</label>
-                    </div>
-                    <div id="key-input" style="display: none;">
-                        <input type="text" name="key" placeholder="Enter decryption key">
-                        <input type="file" name="key_file">
-                    </div>
-                    <button type="submit">Restore</button>
-                    <button type="button" onclick="hideRestoreDialog()">Cancel</button>
-                </form>
+        <button class="restore-chat-button" onclick="showRestoreChatForm()">Restore Chat</button>
+        <div id="restore-chat-modal" class="modal" style="display:none;">
+            <div class="modal-content">
+                <span class="close" onclick="hideRestoreChatForm()">&times;</span>
+                {% include 'restore_chat.html' %}
             </div>
-            {% if conversations %}
-                {% for convo in conversations %}
-                    <li>
-                        <a href="{{ url_for('chat', conversation_id=convo['id']) }}">{{ convo['contact_username'] }}</a>
-                        <span>{{ convo['last_message_time'] }}</span>
-                        <div class="conversation-actions">
-                            <a href="{{ url_for('download_conversation', conversation_id=convo['id']) }}">Download</a>
-                            <form action="{{ url_for('delete_conversation', conversation_id=convo['id']) }}" method="post" style="display:inline;">
-                                <button type="submit">Delete</button>
-                            </form>
-                            <a href="{{ url_for('chat_settings', conversation_id=convo['id']) }}">Settings</a>
-                        </div>
-                    </li>
-                {% endfor %}
-            {% else %}
-                <p>No conversations yet. Use '+' to start a new one.</p>
-            {% endif %}
+        </div>
+        <ul class="conversations-list">
+            {% for convo in conversations %}
+                <li>
+                    <a href="{{ url_for('chat', conversation_id=convo['id']) }}">{{ convo['contact_username'] }}</a>
+                    <span>{{ convo['last_message_time'] }}</span>
+                    <div class="conversation-actions">
+                        <a href="{{ url_for('download_conversation', conversation_id=convo['id']) }}">Download</a>
+                        <form action="{{ url_for('delete_conversation', conversation_id=convo['id']) }}" method="post" style="display:inline;">
+                            <button type="submit">Delete</button>
+                        </form>
+                        <a href="{{ url_for('chat_settings', conversation_id=convo['id']) }}">Settings</a>
+                    </div>
+                </li>
+            {% endfor %}
         </ul>
     </div>
     
@@ -59,44 +44,45 @@
             <button class="menu-button" onclick="toggleSidebar('left')">&#9776;</button>
             <h2>Welcome, {{ session['username'] }}</h2>
             <button class="menu-button" onclick="toggleSidebar('right')">&#9776;</button>
+            {% include 'exit_chat.html' %}
         </div>
         <div class="chat-messages" id="chat-messages">
             {% include 'messages.html' %}
         </div>
-        <div class="chat-input" style="display:none;">
-            <form id="message-form" action="{{ url_for('send_message') }}" method="post">
-                <!-- {{ csrf_token() }} -->
-                <input type="hidden" name="conversation_id" value="{{ conversation_id }}">
-                <input type="text" name="message_text" placeholder="Type your message..." required>
-                <button type="submit">&#9658;</button>
-            </form>
+        {% if not selected_conversation %}
+            <div class="chat-input" style="display:none;">
+        {% else %}
+            <div class="chat-input" style="display:block;">
+                <form id="message-form" action="{{ url_for('send_message') }}" method="post">
+                    <!-- {{ csrf_token() }} -->
+                    <input type="hidden" name="conversation_id" value="{{ conversation_id }}">
+                    <input type="text" name="message_text" placeholder="Type your message..." required>
+                    <button type="submit">&#9658;</button>
+                </form>
+        {% endif %}
         </div>
     </div>
 </div>
+
 {% endblock %}
 {% block scripts %}
 <script>
-    // Function to toggle the sidebar
-    function toggleSidebar(side) {
-        const sidebar = document.getElementById(`sidebar-${side}`);
-        sidebar.classList.toggle('collapsed');
+    // Function to show the restore chat form
+    function showRestoreChatForm() {
+        document.getElementById('restore-chat-modal').style.display = 'block';
     }
 
-    // Function to toggle the search container
-    function toggleSearch() {
-        const searchContainer = document.getElementById('search-container');
-        if (searchContainer.style.display === 'none') {
-            searchContainer.style.display = 'block';
-        } else {
-            searchContainer.style.display = 'none';
-        }
+    // Function to hide the restore chat form
+    function hideRestoreChatForm() {
+        document.getElementById('restore-chat-modal').style.display = 'none';
     }
 
+    // Function to show the restore dialog
     function showRestoreDialog() {
-    const restoreDialog = document.getElementById('restore-dialog');
-    restoreDialog.style.display = 'block';
+        document.getElementById('restore-dialog').style.display = 'block';
     }
 
+    // Function to hide the restore dialog
     function hideRestoreDialog() {
         document.getElementById('restore-dialog').style.display = 'none';
     }
@@ -109,16 +95,6 @@
             } else {
                 document.getElementById('key-input').style.display = 'none';
             }
-        });
-    });
-
-    document.addEventListener('DOMContentLoaded', function() {
-        // Attach event listener to sidebar toggle buttons
-        document.querySelectorAll('.collapse-button').forEach(function(button) {
-            button.addEventListener('click', function() {
-                const side = this.getAttribute('data-side');
-                toggleSidebar(side);
-            });
         });
     });
 
@@ -135,7 +111,6 @@
                     success: function(response) {
                         $('#chat-messages').html(response);
                         $('#message-form')[0].reset();
-                        document.getElementsByClassName('chat-input')[0].style.display = 'block';
                         // Scroll to the bottom of the chat messages
                         const chatMessages = $('#chat-messages')[0];
                         if (chatMessages) {
@@ -166,7 +141,7 @@
                     // Bind the message form event handler
                     bindMessageForm();
                     // Show the chat input
-                    document.getElementsByClassName('chat-input')[0].style.display = 'block';
+                    $('.chat-input').css('display', 'block');
                 },
                 error: function() {
                     alert('Failed to load conversation.');
@@ -174,32 +149,47 @@
             });
         }
 
-        // Function to search users
-        function searchUsers() {
-            const query = document.getElementById('search-input').value;
-            $.ajax({
-                url: "{{ url_for('search_users') }}",
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({ query: query }),
-                success: function(response) {
-                    const results = response.results;
-                    const searchResults = document.getElementById('search-results');
-                    searchResults.innerHTML = '';
-                    results.forEach(function(user) {
-                        const userElement = document.createElement('div');
-                        userElement.textContent = user.username;
-                        userElement.onclick = function() {
-                            startConversation(user.id);
-                        };
-                        searchResults.appendChild(userElement);
-                    });
-                },
-                error: function() {
-                    alert('Failed to search users.');
-                }
-            });
+        // Function to toggle the sidebar
+        function toggleSidebar(side) {
+            const sidebar = document.getElementById(`sidebar-${side}`);
+            sidebar.classList.toggle('collapsed');
         }
+
+        // Function to toggle the search input
+        function toggleSearch() {
+            const searchContainer = document.getElementById('search-container');
+            if (searchContainer.style.display === 'none' || searchContainer.style.display === '') {
+                searchContainer.style.display = 'block';
+            } else {
+                searchContainer.style.display = 'none';
+            }
+        }
+
+        // Function to search for users
+        function searchUsers() {
+            const query = $('#search-input').val();
+            if (query.length > 0) {
+                $.ajax({
+                    url: "{{ url_for('search_users') }}",
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ query: query }),
+                    success: function(response) {
+                        let resultsHtml = '';
+                        response.results.forEach(function(user) {
+                            resultsHtml += '<div><a href="javascript:void(0);" onclick="startConversation(' + user.id + ')">' + user.username + '</a></div>';
+                        });
+                        $('#search-results').html(resultsHtml);
+                    },
+                    error: function() {
+                        $('#search-results').html('<div>Error searching users.</div>');
+                    }
+                });
+            } else {
+                $('#search-results').html('');
+            }
+        }
+
         // Function to start a conversation
         function startConversation(userId) {
             $.ajax({
@@ -210,13 +200,48 @@
                 success: function(response) {
                     loadConversation(response.conversation_id);
                 },
-                document.getElementsByClassName('chat-input')[0].style.display = 'block';
                 error: function() {
                     alert('Failed to start conversation.');
                 }
             });
         }
-    
+
+        // Function to show the exit chat form
+        function showExitChatForm(conversationId) {
+            document.getElementById('exit-chat-form').style.display = 'block';
+            document.getElementById('exit-chat-form').dataset.conversationId = conversationId;
+        }
+
+        // Function to hide the exit chat form
+        function hideExitChatForm() {
+            document.getElementById('exit-chat-form').style.display = 'none';
+        }
+
+        // Initialize Socket.IO
+        const socket = io();
+
+        // Join the conversation room
+        const conversationId = "{{ selected_conversation }}";
+        if (conversationId) {
+            socket.emit('join', { conversation_id: conversationId });
+        }
+
+        // Listen for new messages
+        socket.on('new_message', function(data) {
+            if (data.conversation_id == conversationId) {
+                $('#chat-messages').html(data.html);
+                const chatMessages = $('#chat-messages')[0];
+                if (chatMessages) {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            }
+        });
+
+        // Leave the conversation room when the user navigates away
+        window.addEventListener('beforeunload', function() {
+            socket.emit('leave', { conversation_id: conversationId });
+        });
+
         // Expose functions to the global scope
         window.showRestoreDialog = showRestoreDialog;
         window.hideRestoreDialog = hideRestoreDialog;
@@ -225,6 +250,14 @@
         window.searchUsers = searchUsers;
         window.startConversation = startConversation;
         window.loadConversation = loadConversation;
+        window.showExitChatForm = showExitChatForm;
+        window.hideExitChatForm = hideExitChatForm;
+        window.exitChat = exitChat;
+        window.showRestoreChatForm = showRestoreChatForm;
+        window.hideRestoreChatForm = hideRestoreChatForm;
+
+        // Bind the message form event handler on page load
+        bindMessageForm();
     });
 </script>
 {% endblock %}

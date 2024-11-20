@@ -1,12 +1,16 @@
 <!-- templates/restore_chat.html -->
-<form method="post">
+<form method="post" enctype="multipart/form-data">
     <p>Was the chat encrypted?</p>
     <input type="radio" name="decrypt_option" value="encrypted" required> Yes (Provide key)<br>
     <input type="radio" name="decrypt_option" value="plain" required> No<br>
     <div id="key-input" style="display:none;">
         <label for="key">Enter Decryption Key:</label>
         <input type="text" name="key" id="key">
+        <label for="key_file">Upload Decryption Key File:</label>
+        <input type="file" name="key_file" id="key_file" accept=".key">
     </div>
+    <label for="image_file">Upload Steganographed Image File:</label>
+    <input type="file" name="image_file" id="image_file" accept="image/*" required>
     <button type="submit">Restore Chat</button>
 </form>
 <script>

@@ -1,4 +1,3 @@
-<!-- templates/conversation.html -->
 {% if messages %}
     <div class="chat-header">
         <h2>Chat with {{ contact_username }}</h2>
@@ -22,37 +21,26 @@
     <p id="no-messages" style="display:block;">No messages in this conversation.</p>
     <button id="start-messaging-button" onclick="startMessaging()" style="display:block;">Click to start messaging with this user</button>
 {% endif %}
-
 <div class="chat-input" style="display:none;">
     <form id="message-form" action="{{ url_for('send_message') }}" method="post">
-        <!-- {{ csrf_token() }} -->
         <input type="hidden" name="conversation_id" value="{{ conversation_id }}">
         <input type="text" name="message_text" placeholder="Type your message..." required>
         <button type="submit">&#9658;</button>
     </form>
 </div>
 
-<div id="exit-chat-form" class="overlay">
-    <div class="popup">
-        <h2>Exit Chat</h2>
-        <a class="close" href="#">&times;</a>
-        <form action="{{ url_for('exit_chat', conversation_id=conversation_id) }}" method="post">
-            <p>Do you want to encrypt and exit or exit without encryption?</p>
-            <button name="option" value="encrypt">Encrypt and Exit</button>
-            <button name="option" value="plain">Plain and Exit</button>
-        </form>
-    </div>
-</div>
-
-<script>
-    function showExitChatForm(conversationId) {
-        document.getElementById('exit-chat-form').style.display = 'block';
-    }
-    
+<script>    
     function startMessaging(){
         console.log('startMessaging() called');
         document.getElementById('start-messaging-button').style.display = 'none';
         document.getElementById('no-messages').style.display = 'none';
         document.querySelector('.chat-input').style.display = 'block';
     }
+
+    $(document).ready(function() {
+        // Show the chat input if there are messages
+        if ({{ messages|length }} > 0) {
+            $('.chat-input').css('display', 'block');
+        }
+    });
 </script>

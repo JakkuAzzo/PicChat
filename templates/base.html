@@ -36,20 +36,6 @@
       {% endif %}
     {% endwith %}
     {% block content %}{% endblock %}
-    {% if selected_conversation %}
-    <div id="exit-chat-form" class="overlay">
-        <div class="popup">
-            <h2>Exit Chat</h2>
-            <a class="close" href="#" onclick="toggleExitChatForm()" style="display: none;">&times;</a>
-            <form action="{{ url_for('exit_chat', conversation_id=selected_conversation) }}" method="post">
-                <p>Do you want to encrypt and exit or exit without encryption?</p>
-                <button name="option" value="encrypt">Encrypt and Exit</button>
-                <button name="option" value="plain">Plain and Exit</button>
-                <button type="button" onclick="toggleExitChatForm">Cancel</button>
-            </form>
-        </div>
-    </div>
-    {% endif %}
     {% block scripts %}{% endblock %}
     <script>
       document.addEventListener('DOMContentLoaded', function() {

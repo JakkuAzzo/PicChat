@@ -16,7 +16,7 @@
     </nav>
     <h2>Chat Settings</h2>
     <form action="{{ url_for('chat_settings', conversation_id=conversation_id) }}" method="post" enctype="multipart/form-data">
-        <!--- {{ csrf_token() }} --->
+        <!--- {{ csrf_token() }} -->
         <div>
             <label for="background_image">Upload Background Image:</label>
             <input type="file" name="background_image" id="background_image" accept="image/*" required>

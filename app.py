@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import sqlite3
 import os
+import io
 import datetime
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -14,6 +15,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from Crypto.Random import get_random_bytes
 import base64
+import zipfile
 from PIL import Image
 
 app = Flask(__name__)
@@ -228,6 +230,7 @@ def send_message():
     # Render the messages partial template
     rendered = render_template('messages.html', messages=messages)
     response = make_response(rendered)
+    response.headers['Content-Type'] = 'text/html'
     
     # Emit the new message to the room
     socketio.emit('new_message', {'conversation_id': conversation_id, 'html': rendered}, room=conversation_id)
@@ -300,39 +303,23 @@ def exit_chat(conversation_id):
             image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_name)
             lsb.hide(image, hidden_content).save(image_path)
             
-            # Update the conversation record
-            conn.execute(
-                'UPDATE conversations SET image_name = ? WHERE id = ?',
-                (image_name, conversation_id)
-            )
-            # Delete messages from the database
-            conn.execute(
-                'DELETE FROM messages WHERE conversation_id = ?', (conversation_id,)
-            )
-            conn.commit()
-            conn.close()
+            # Create a zip file containing the image and the key (if encrypted)
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                zip_file.write(image_path, os.path.basename(image_path))
+                if option == 'encrypt':
+                    zip_file.write(key_path, os.path.basename(key_path))
+            zip_buffer.seek(0)
             
-            # Add the steganographed image as a message
-            conn = get_db_connection()
-            conn.execute(
-                'INSERT INTO messages (conversation_id, sender_id, message_text, timestamp) VALUES (?, ?, ?, ?)',
-                (conversation_id, current_user.id, f'<img src="{url_for("static", filename=image_name)}" alt="Steganographed Image">', datetime.utcnow())
-            )
-            conn.commit()
-            conn.close()
-            
-            if option == 'encrypt':
-                # Provide the key file and t he image to the user
-                return send_file(image_path, as_attachment=True)
-            else:
-                return send_file(image_path, as_attachment=True)
+            # Return the zip file as a download
+            return send_file(zip_buffer, as_attachment=True, download_name=f'chat_{conversation_id}.zip')
         else:
             flash("Conversation not found.")
             return redirect(url_for('chat'))
     else:
         # Render a template to choose encryption option
         return render_template('exit_chat.html', conversation_id=conversation_id)
-
+    
 def encrypt(content, key):
     if isinstance(key, bytes):
         key = key.decode('latin-1')  # Decode bytes to string using latin-1
