@@ -76,6 +76,17 @@
     function hideRestoreChatForm() {
         document.getElementById('restore-chat-modal').style.display = 'none';
     }
+
+    function downloadConversation(conversationId) {
+        if (conversationId) {
+            const downloadForm = document.getElementById('downloadForm');
+            downloadForm.action = `{{ url_for('download_conversation', conversation_id='') }}/${conversationId}`;
+            downloadForm.submit();
+        } else {
+            alert("No conversation selected.");
+        }
+    }
+    
     // Function to show the restore dialog
     function showRestoreDialog() {
         document.getElementById('restore-dialog').style.display = 'block';
