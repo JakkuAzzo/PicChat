@@ -1,0 +1,11 @@
+<!-- templates/single_message.html -->
+<div class="chat-message {% if message.sender_id == current_user.id %}you{% else %}other{% endif %}">
+    <p>{{ message.message_text }}</p>
+    <div class="message-info">
+        {% if message.sender_id == current_user.id %}
+            You - {{ message.timestamp }}
+        {% else %}
+            {{ message.sender_username }} - {{ message.timestamp }}
+        {% endif %}
+    </div>
+</div>

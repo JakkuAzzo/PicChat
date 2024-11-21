@@ -1,4 +1,4 @@
-<!-- chat.html -->
+<!-- templates/chat.html -->
 {% extends 'base.html' %}
 {% block title %}PicChat - Chat{% endblock %}
 {% block content %}
@@ -27,7 +27,7 @@
                     <a href="{{ url_for('chat', conversation_id=convo['id']) }}">{{ convo['contact_username'] }}</a>
                     <span>{{ convo['last_message_time'] }}</span>
                     <div class="conversation-actions">
-                        <a href="javascript:void(0);" onclick="showDownloadForm()">Download</a>
+                        <a href="javascript:void(0);" onclick="showDownloadForm({{ convo['id'] }})">Download</a>
                         <form action="{{ url_for('delete_conversation', conversation_id=convo['id']) }}" method="post" style="display:inline;">
                             <button type="submit">Delete</button>
                         </form>
@@ -44,14 +44,8 @@
             <button class="menu-button" onclick="toggleSidebar('left')">&#9776;</button>
             <h2>Welcome, {{ session['username'] }}</h2>
             {% if selected_conversation %}
-             <form id="download-form" method="post" action="{{ url_for('download_conversation', conversation_id=selected_conversation) }}" style="display:none;">
-                <p>Do you want to encrypt and download or download without encryption?</p>
-                <button name="option" value="encrypt">Encrypt and Download</button>
-                <button name="option" value="plain">Plain Download</button>
-                <button type="button" onclick="cancelDownload()">Cancel</button>
-            </form>
-            <button class="menu-button" onclick="toggleSidebar('right')">&#9776;</button>
-            {% include 'exit_chat.html' %}
+                <button onclick="showExitChatForm({{ selected_conversation }})">Exit Chat</button>
+            {% endif %}
         </div>
         <div class="chat-messages" id="chat-messages">
             {% include 'messages.html' %}
@@ -60,14 +54,6 @@
             <div class="chat-input" style="display:none;">
         {% endif %}
         {% if selected_conversation %}
-            <script>
-                function showDownloadForm() {
-                    document.getElementById('download-form').style.display = 'block';
-                }
-                function cancelDownload() {
-                    document.getElementById('download-form').style.display = 'none';
-                }
-            </script>
             <div class="chat-input" style="display:block;">
                 <form id="message-form" action="{{ url_for('send_message') }}" method="post">
                     <!-- {{ csrf_token() }} -->
@@ -75,11 +61,10 @@
                     <input type="text" name="message_text" placeholder="Type your message..." required>
                     <button type="submit">&#9658;</button>
                 </form>
+            </div>
         {% endif %}
-        </div>
     </div>
 </div>
-
 {% endblock %}
 {% block scripts %}
 <script>
@@ -87,193 +72,165 @@
     function showRestoreChatForm() {
         document.getElementById('restore-chat-modal').style.display = 'block';
     }
-
     // Function to hide the restore chat form
     function hideRestoreChatForm() {
         document.getElementById('restore-chat-modal').style.display = 'none';
     }
-
     // Function to show the restore dialog
     function showRestoreDialog() {
         document.getElementById('restore-dialog').style.display = 'block';
     }
-
     // Function to hide the restore dialog
     function hideRestoreDialog() {
         document.getElementById('restore-dialog').style.display = 'none';
     }
-
-    // Show key input if 'encrypted' is selected
-    document.querySelectorAll('input[name="decrypt_option"]').forEach(function(elem) {
-        elem.addEventListener('change', function() {
-            if (this.value === 'encrypted') {
-                document.getElementById('key-input').style.display = 'block';
-            } else {
-                document.getElementById('key-input').style.display = 'none';
+    // Function to toggle the sidebar
+    function toggleSidebar(side) {
+        const sidebar = document.getElementById(`sidebar-${side}`);
+        sidebar.classList.toggle('collapsed');
+    }
+    // Function to toggle the search input
+    function toggleSearch() {
+        const searchContainer = document.getElementById('search-container');
+        searchContainer.style.display = searchContainer.style.display === 'none' ? 'block' : 'none';
+    }
+    // Function to search users
+    function searchUsers() {
+        const query = document.getElementById('search-input').value;
+        $.ajax({
+            url: "{{ url_for('search_users') }}",
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ query: query }),
+            success: function(response) {
+                const resultsContainer = document.getElementById('search-results');
+                resultsContainer.innerHTML = '';
+                response.results.forEach(user => {
+                    const userElement = document.createElement('div');
+                    userElement.textContent = user.username;
+                    userElement.onclick = () => startConversation(user.id);
+                    resultsContainer.appendChild(userElement);
+                });
+            },
+            error: function() {
+                alert('Failed to search users.');
             }
         });
-    });
-
-    $(document).ready(function() {
-        // Function to bind the message form event handler
-        function bindMessageForm() {
-            $('#message-form').on('submit', function(event) {
-                event.preventDefault();
-                $.ajax({
-                    url: $(this).attr('action'),
-                    method: $(this).attr('method'),
-                    data: $(this).serialize(),
-                    dataType: 'html',
-                    success: function(response) {
-                        $('#chat-messages').html(response);
-                        $('#message-form')[0].reset();
-                        // Scroll to the bottom of the chat messages
-                        const chatMessages = $('#chat-messages')[0];
-                        if (chatMessages) {
-                            chatMessages.scrollTop = chatMessages.scrollHeight;
-                        }
-                    },
-                    error: function() {
-                        alert('Error sending message.');
-                    }
-                });
-            });
-        }
-
-        // Function to load a conversation
-        function loadConversation(conversationId) {
+    }
+    // Function to start a conversation
+    function startConversation(userId) {
+        $.ajax({
+            url: "{{ url_for('start_conversation') }}",
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ contact_id: userId }),
+            success: function(response) {
+                loadConversation(response.conversation_id);
+            },
+            error: function() {
+                alert('Failed to start conversation.');
+            }
+        });
+    }
+    // Function to load a conversation
+    function loadConversation(conversationId) {
+        $.ajax({
+            url: "{{ url_for('chat') }}",
+            type: "GET",
+            data: { conversation_id: conversationId },
+            dataType: 'html',
+            success: function(response) {
+                $('#main-chat').html(response);
+                // Scroll to the bottom of the chat messages
+                const chatMessages = $('#chat-messages')[0];
+                if (chatMessages) {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+                // Bind the message form event handler
+                bindMessageForm();
+                // Show the chat input
+                $('.chat-input').css('display', 'block');
+            },
+            error: function() {
+                alert('Failed to load conversation.');
+            }
+        });
+    }
+    // Function to bind the message form event handler
+    function bindMessageForm() {
+        $('#message-form').on('submit', function(event) {
+            event.preventDefault();
             $.ajax({
-                url: "{{ url_for('chat') }}",
-                type: "GET",
-                data: { conversation_id: conversationId },
+                url: $(this).attr('action'),
+                method: $(this).attr('method'),
+                data: $(this).serialize(),
                 dataType: 'html',
                 success: function(response) {
-                    $('#main-chat').html(response);
+                    $('#chat-messages').append(response);
+                    $('#message-form')[0].reset();
                     // Scroll to the bottom of the chat messages
                     const chatMessages = $('#chat-messages')[0];
                     if (chatMessages) {
                         chatMessages.scrollTop = chatMessages.scrollHeight;
                     }
-                    // Bind the message form event handler
-                    bindMessageForm();
-                    // Show the chat input
-                    $('.chat-input').css('display', 'block');
                 },
                 error: function() {
-                    alert('Failed to load conversation.');
+                    alert('Error sending message.');
                 }
             });
-        }
-
-        // Function to toggle the sidebar
-        function toggleSidebar(side) {
-            const sidebar = document.getElementById(`sidebar-${side}`);
-            sidebar.classList.toggle('collapsed');
-        }
-
-        // Function to toggle the search input
-        function toggleSearch() {
-            const searchContainer = document.getElementById('search-container');
-            if (searchContainer.style.display === 'none' || searchContainer.style.display === '') {
-                searchContainer.style.display = 'block';
-            } else {
-                searchContainer.style.display = 'none';
-            }
-        }
-
-        // Function to search for users
-        function searchUsers() {
-            const query = $('#search-input').val();
-            if (query.length > 0) {
-                $.ajax({
-                    url: "{{ url_for('search_users') }}",
-                    type: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({ query: query }),
-                    success: function(response) {
-                        let resultsHtml = '';
-                        response.results.forEach(function(user) {
-                            resultsHtml += '<div><a href="javascript:void(0);" onclick="startConversation(' + user.id + ')">' + user.username + '</a></div>';
-                        });
-                        $('#search-results').html(resultsHtml);
-                    },
-                    error: function() {
-                        $('#search-results').html('<div>Error searching users.</div>');
-                    }
-                });
-            } else {
-                $('#search-results').html('');
-            }
-        }
-
-        // Function to start a conversation
-        function startConversation(userId) {
-            $.ajax({
-                url: "{{ url_for('start_conversation') }}",
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({ contact_id: userId }),
-                success: function(response) {
-                    loadConversation(response.conversation_id);
-                },
-                error: function() {
-                    alert('Failed to start conversation.');
-                }
-            });
-        }
-
-        // Function to show the exit chat form
-        function showExitChatForm(conversationId) {
-            document.getElementById('exit-chat-form').style.display = 'block';
-            document.getElementById('exit-chat-form').dataset.conversationId = conversationId;
-        }
-
-        // Function to hide the exit chat form
-        function hideExitChatForm() {
-            document.getElementById('exit-chat-form').style.display = 'none';
-        }
-
-        // Initialize Socket.IO
-        const socket = io();
-
-        // Join the conversation room
-        const conversationId = "{{ selected_conversation }}";
-        if (conversationId) {
-            socket.emit('join', { conversation_id: conversationId });
-        }
-
-        // Listen for new messages
-        socket.on('new_message', function(data) {
-            if (data.conversation_id == conversationId) {
-                $('#chat-messages').html(data.html);
-                const chatMessages = $('#chat-messages')[0];
-                if (chatMessages) {
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
-            }
         });
-
-        // Leave the conversation room when the user navigates away
-        window.addEventListener('beforeunload', function() {
-            socket.emit('leave', { conversation_id: conversationId });
-        });
-
-        // Expose functions to the global scope
-        window.showRestoreDialog = showRestoreDialog;
-        window.hideRestoreDialog = hideRestoreDialog;
-        window.toggleSidebar = toggleSidebar;
-        window.toggleSearch = toggleSearch;
-        window.searchUsers = searchUsers;
-        window.startConversation = startConversation;
-        window.loadConversation = loadConversation;
-        window.showExitChatForm = showExitChatForm;
-        window.hideExitChatForm = hideExitChatForm;
-        window.exitChat = exitChat;
-        window.showRestoreChatForm = showRestoreChatForm;
-        window.hideRestoreChatForm = hideRestoreChatForm;
-
-        // Bind the message form event handler on page load
-        bindMessageForm();
+    }
+    // Function to show the exit chat form
+    function showExitChatForm(conversationId) {
+        document.getElementById('exit-chat-form').style.display = 'block';
+        document.getElementById('exit-chat-form').dataset.conversationId = conversationId;
+    }
+    // Function to hide the exit chat form
+    function hideExitChatForm() {
+        document.getElementById('exit-chat-form').style.display = 'none';
+    }
+    // Function to show the download form
+    function showDownloadForm(conversationId) {
+        const downloadForm = document.createElement('form');
+        downloadForm.method = 'post';
+        downloadForm.action = `{{ url_for('download_conversation', conversation_id='') }}/${conversationId}`;
+        downloadForm.innerHTML = `
+            <p>Do you want to encrypt and download or download without encryption?</p>
+            <button name="option" value="encrypt">Encrypt and Download</button>
+            <button name="option" value="plain">Plain Download</button>
+            <button type="button" onclick="cancelDownload()">Cancel</button>
+        `;
+        document.body.appendChild(downloadForm);
+        downloadForm.style.display = 'block';
+    }
+    // Function to cancel the download form
+    function cancelDownload() {
+        const downloadForm = document.querySelector('form[method="post"]');
+        if (downloadForm) {
+            downloadForm.style.display = 'none';
+            document.body.removeChild(downloadForm);
+        }
+    }
+    // Initialize Socket.IO
+    const socket = io();
+    // Join the conversation room
+    const conversationId = "{{ selected_conversation }}";
+    if (conversationId) {
+        socket.emit('join', { conversation_id: conversationId });
+    }
+    // Listen for new messages
+    socket.on('new_message', function(data) {
+        if (data.conversation_id == conversationId) {
+            $('#chat-messages').append(data.html);
+            const chatMessages = $('#chat-messages')[0];
+            if (chatMessages) {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+    });
+    // Leave the conversation room when the user navigates away
+    window.addEventListener('beforeunload', function() {
+        socket.emit('leave', { conversation_id: conversationId });
     });
 </script>
 {% endblock %}

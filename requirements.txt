@@ -1,4 +1,6 @@
+APScheduler==3.10.4
 beautifulsoup4==4.12.3
+bidict==0.23.1
 blinker==1.8.2
 certifi==2024.8.30
 cffi==1.17.1
@@ -10,7 +12,9 @@ crypto==1.4.1
 cryptography==43.0.3
 Flask==3.0.3
 Flask-Login==0.6.3
+Flask-SocketIO==5.4.1
 Flask-WTF==1.2.2
+h11==0.14.0
 idna==3.10
 iniconfig==2.0.0
 itsdangerous==2.2.0
@@ -26,11 +30,18 @@ pluggy==1.5.0
 pycparser==2.22
 pycryptodome==3.21.0
 pytest==8.3.3
+python-engineio==4.10.1
+python-socketio==5.11.4
+pytz==2024.2
 PyYAML==6.0.2
 requests==2.32.3
 shellescape==3.8.1
+simple-websocket==1.1.0
+six==1.16.0
 soupsieve==2.6
 stegano==0.11.4
+tzlocal==5.2
 urllib3==2.2.3
 Werkzeug==3.0.5
+wsproto==1.2.0
 WTForms==3.2.1

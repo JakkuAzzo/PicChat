@@ -4,6 +4,9 @@ import sqlite3
 import os
 import io
 import datetime
+import atexit
+from apscheduler.schedulers.background import BackgroundScheduler
+import shutil
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf.csrf import CSRFProtect
@@ -276,7 +279,7 @@ def exit_chat(conversation_id):
                 
                 # Save the key to a file
                 key_filename = f'key_{conversation_id}.key'
-                key_path = os.path.join(app.config['UPLOAD_FOLDER'], key_filename)
+                key_path = os.path.join('keys', key_filename)
                 with open(key_path, 'wb') as key_file:
                     key_file.write(key)
                 flash("Chat encrypted and saved. Please download your decryption key.")
@@ -301,7 +304,7 @@ def exit_chat(conversation_id):
                 image = image.convert('RGB')
             
             image_name = f"chat_{conversation_id}.png"
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_name)
+            image_path = os.path.join('steganographedchats', image_name)
             lsb.hide(image, hidden_content).save(image_path)
             
             # Create a zip file containing the image and the key (if encrypted)
@@ -537,10 +540,12 @@ def restore_chat():
         if not image_file:
             flash("No image file provided.")
             return redirect(url_for('chat'))
+        
         # Save the uploaded image temporarily
         image_filename = secure_filename(image_file.filename)
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_filename)
         image_file.save(image_path)
+        
         try:
             # Extract hidden content using steganography
             hidden_content = lsb.reveal(image_path)
@@ -548,6 +553,7 @@ def restore_chat():
                 flash("No hidden content found in the image.")
                 os.remove(image_path)
                 return redirect(url_for('chat'))
+            
             # Decrypt if necessary
             if decrypt_option == 'encrypted':
                 if key_file:
@@ -556,11 +562,13 @@ def restore_chat():
                     flash("Decryption key is required.")
                     os.remove(image_path)
                     return redirect(url_for('chat'))
+                
                 # Decode from base64 and decrypt
                 encrypted_content = base64.b64decode(hidden_content)
                 restored_chat_content = decrypt(encrypted_content, key.encode('utf-8'))
             else:
                 restored_chat_content = hidden_content
+            
             # Process the restored chat content
             messages = restored_chat_content.split("\n")
             # Check if the restored conversation includes the current user
@@ -574,6 +582,7 @@ def restore_chat():
             else:
                 # Create a new conversation
                 conversation_id = create_new_conversation(conversation_users)
+            
             # Insert messages into the database
             conn = get_db_connection()
             for message_text in messages:
@@ -595,13 +604,34 @@ def restore_chat():
             flash("Failed to restore conversation.")
         finally:
             os.remove(image_path)  # Clean up the uploaded image
+        
         return redirect(url_for('chat', conversation_id=conversation_id))
     else:
         return redirect(url_for('chat'))
-
+    
 @app.route('/about', methods=['GET', 'POST'])
 def about():
     return render_template('about.html')
+
+def clear_folders():
+    folders = ['keys', 'steganographedchats']
+    for folder in folders:
+        for filename in os.listdir(folder):
+            file_path = os.path.join(folder, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print(f'Failed to delete {file_path}. Reason: {e}')
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(clear_folders, 'interval', minutes=15)
+scheduler.start()
+
+# Shut down the scheduler when exiting the app
+atexit.register(lambda: scheduler.shutdown())
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

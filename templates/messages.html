@@ -1,14 +1,14 @@
 <!-- templates/messages.html -->
 {% for message in messages %}
-    {% if message['sender_id'] == current_user.id %}
+    {% if message.sender_id == current_user.id %}
         <div class="chat-message you">
-            <p>{{ message['message_text'] }}</p>
-            <div class="message-info">You - {{ message['timestamp'] }}</div>
+            <p>{{ message.message_text }}</p>
+            <div class="message-info">You - {{ message.timestamp }}</div>
         </div>
     {% else %}
         <div class="chat-message other">
-            <p>{{ message['message_text'] }}</p>
-            <div class="message-info">{{ message['sender_username'] }} - {{ message['timestamp'] }}</div>
+            <p>{{ message.message_text }}</p>
+            <div class="message-info">{{ message.sender_username }} - {{ message.timestamp }}</div>
         </div>
     {% endif %}
 {% endfor %}
